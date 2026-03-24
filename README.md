@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GTM Briefing Agent v1
 
-## Getting Started
+A polished, Vercel-ready Next.js product demo for generating competitive intelligence / GTM briefing reports.
 
-First, run the development server:
+## Stack
+- Next.js (App Router) + TypeScript
+- Tailwind CSS
+- Gemini via `@google/genai` (server-side)
+- LocalStorage for report history (v1)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Routes
+- `/` marketing homepage
+- `/app` interactive dashboard
+- `/sample-brief` polished sample report
+- `/how-it-works` workflow overview
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
+1. Install dependencies
+   ```bash
+   npm install
+   ```
+2. Create env file
+   ```bash
+   cp .env.example .env.local
+   ```
+3. Add your key in `.env.local`
+   ```
+   GEMINI_API_KEY=your_key_here
+   ```
+4. Run development server
+   ```bash
+   npm run dev
+   ```
+5. Open `http://localhost:3000`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Demo / Fallback behavior
+If `GEMINI_API_KEY` is missing, `/api/generate` gracefully returns a polished demo report so the app remains fully demoable.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Gemini integration notes
+- Model: `gemini-2.5-flash-lite`
+- Key is read only from `process.env.GEMINI_API_KEY`
+- Calls happen server-side in `src/app/api/generate/route.ts`
 
-## Learn More
+## Vercel deployment
+1. Push repo to GitHub
+2. Import to Vercel
+3. Add environment variable in Vercel project settings:
+   - `GEMINI_API_KEY`
+4. Deploy
 
-To learn more about Next.js, take a look at the following resources:
+No database is required for v1. History is client-side localStorage.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Caveats
+- Evidence gathering in v1 prioritizes user-provided URLs and simple public-page fetch.
+- The app intentionally avoids brittle scraping of blocked/login-only sources.
+- Report output includes confidence and coverage notes to reduce overclaim risk.
