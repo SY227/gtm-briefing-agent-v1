@@ -84,15 +84,6 @@ export function MemoView({ brief }: { brief: GTMBrief }) {
           <EvidenceList items={brief.latestVerifiedSignals} />
         </div>
 
-        <div>
-          <h3 className="mb-2 text-lg font-semibold">What Changed Recently</h3>
-          <EvidenceList items={brief.whatChanged} />
-        </div>
-
-        <div>
-          <h3 className="mb-2 text-lg font-semibold">Product / Pricing Signals</h3>
-          <EvidenceList items={brief.productPricingSignals} />
-        </div>
 
         {[
           ["Likely ICP / Target Customer", brief.likelyICP],
