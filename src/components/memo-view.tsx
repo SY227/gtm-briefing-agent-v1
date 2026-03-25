@@ -17,7 +17,7 @@ function EvidenceList({ items }: { items: { claim: string; sourceId?: string; so
   return (
     <ul className="space-y-3 text-[15px] leading-7 text-slate-700">
       {items.map((item, idx) => (
-        <li key={idx}>
+        <li key={idx} className="rounded-lg border border-slate-200 p-3">
           <p>{item.claim}{item.sourceId ? ` [${item.sourceId}]` : ""}</p>
           <p className="mt-1 text-xs text-slate-500">
             {item.observedDate ? `Date: ${item.observedDate}` : "Date: not confirmed"} · Confidence: {item.dateConfidence}
@@ -35,11 +35,12 @@ function EvidenceList({ items }: { items: { claim: string; sourceId?: string; so
 
 export function MemoView({ brief }: { brief: GTMBrief }) {
   const fullMemo = JSON.stringify(brief, null, 2);
+
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
       <div className="mb-7 border-b border-slate-200 pb-5">
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="rounded-full border border-slate-300 px-2 py-1 uppercase tracking-wide text-slate-600">{brief.mode === "live" ? "Live generated" : brief.mode === "demo" ? "Sample demo" : "Generation fallback"}</span>
+          <span className="rounded-full border border-slate-300 px-2 py-1 uppercase tracking-wide text-slate-600">{brief.mode === "live" ? "Live generated" : "Generation fallback"}</span>
           <span className="rounded-full border border-slate-300 px-2 py-1 text-slate-600">As of {new Date(brief.asOf).toLocaleString()}</span>
           <span className={`rounded-full px-2 py-1 ${brief.freshness.status === "current" ? "bg-emerald-100 text-emerald-700" : brief.freshness.status === "mixed" ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-700"}`}>
             Freshness: {brief.freshness.status}
@@ -47,7 +48,8 @@ export function MemoView({ brief }: { brief: GTMBrief }) {
           <button onClick={() => window.print()} className="ml-auto rounded-md border border-slate-300 px-2 py-1 text-slate-700">Print</button>
           <Copy text={fullMemo} />
         </div>
-        <h2 className="mt-4 text-2xl font-semibold tracking-tight text-slate-900">{brief.company} Competitive Intelligence Memo</h2>
+
+        <h2 className="mt-4 text-2xl font-semibold tracking-tight text-slate-900">{brief.company} Intelligence Memo</h2>
         <p className="mt-1 text-sm text-slate-600">Objective: {brief.objective} · Audience: {brief.audience}</p>
         {brief.competitors.length > 0 && <p className="mt-1 text-sm text-slate-600">Competitors: {brief.competitors.join(", ")}</p>}
         {brief.companyProfile && (
@@ -61,12 +63,16 @@ export function MemoView({ brief }: { brief: GTMBrief }) {
       </div>
 
       {brief.systemRun && brief.systemRun.length > 0 && (
-        <details className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <summary className="cursor-pointer text-sm font-semibold text-slate-800">System run trace</summary>
+        <details className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4" open>
+          <summary className="cursor-pointer text-sm font-semibold text-slate-800">System run</summary>
           <ul className="mt-3 space-y-2 text-sm text-slate-700">
             {brief.systemRun.map((s, i) => (
-              <li key={i}>
-                <span className="font-medium">{s.step}</span> — {s.detail}
+              <li key={i} className="flex items-start gap-2">
+                <span className={`mt-1 inline-block h-2.5 w-2.5 rounded-full ${s.status === "done" ? "bg-emerald-500" : s.status === "failed" ? "bg-rose-500" : "bg-amber-500"}`} />
+                <div>
+                  <span className="font-medium">{s.step}</span>
+                  <p className="text-slate-600">{s.detail}</p>
+                </div>
               </li>
             ))}
           </ul>
@@ -83,7 +89,6 @@ export function MemoView({ brief }: { brief: GTMBrief }) {
           <h3 className="mb-2 text-lg font-semibold">Latest Verified Signals</h3>
           <EvidenceList items={brief.latestVerifiedSignals} />
         </div>
-
 
         {[
           ["Likely ICP / Target Customer", brief.likelyICP],

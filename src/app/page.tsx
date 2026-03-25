@@ -72,25 +72,18 @@ export default function Page() {
 
   const canGenerate = useMemo(() => input.primaryCompany.trim().length > 1, [input.primaryCompany]);
 
-  const runPills = [
-    "Normalize",
-    "Discover",
-    "Collect",
-    "Audit",
-    "Synthesize",
-    "Score",
-  ];
+  const runPills = ["Normalize", "Discover", "Collect", "Audit", "Synthesize", "Format"];
 
   async function runGenerate() {
     setLoading(true);
     setNotices([]);
     setProgress([
-      "Normalizing request",
-      "Searching latest public sources",
-      "Applying source governance",
-      "Collecting weighted evidence",
-      "Auditing freshness",
-      "Synthesizing memo",
+      "Input normalization",
+      "Source discovery",
+      "Evidence collection",
+      "Freshness audit",
+      "Synthesis",
+      "Confidence formatting",
     ]);
     try {
       const res = await fetch("/api/generate", {
@@ -103,7 +96,7 @@ export default function Page() {
 
       const previous = history.find((h) => h.company.toLowerCase() === data.brief.company.toLowerCase());
       const deltaNotice = previous
-        ? `Since last run (${new Date(previous.asOf).toLocaleDateString()}): what-changed signals ${previous.whatChanged.length} → ${data.brief.whatChanged.length}.`
+        ? `Since last run (${new Date(previous.asOf).toLocaleDateString()}): signal count ${previous.latestVerifiedSignals.length} → ${data.brief.latestVerifiedSignals.length}.`
         : undefined;
 
       const nextNotices = [...(data.notices || []), ...(deltaNotice ? [deltaNotice] : [])];
@@ -114,10 +107,10 @@ export default function Page() {
       setHistory(nextHistory);
       localStorage.setItem("ci-brief-history-v2", JSON.stringify(nextHistory));
 
-      setProgress(["Memo ready"]);
+      setProgress(["Run complete"]);
     } catch {
       setNotices(["Request failed before server processing. Please retry."]);
-      setProgress(["Request failed"]);
+      setProgress(["Run failed"]);
     } finally {
       setLoading(false);
     }
@@ -126,15 +119,17 @@ export default function Page() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <section className="mx-auto max-w-5xl px-4 pb-6 pt-10 sm:px-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Agentic Market Intelligence System</p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">Build executive-grade competitive briefs with a visible multi-stage agent workflow.</h1>
-        <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">Designed to demonstrate practical agent orchestration: input normalization, source discovery, evidence audit, synthesis, and confidence scoring.</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Evidence-aware intelligence workflow</p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">Generate executive competitive briefings with a visible multi-stage run.</h1>
+        <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">
+          Built for GTM, strategy, and research teams that need source traceability, freshness controls, and reliable output framing.
+        </p>
       </section>
 
       <section className="mx-auto max-w-5xl px-4 sm:px-6">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="mb-4">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Agent run status</p>
+          <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Workflow run</p>
             <div className="flex flex-wrap gap-2">
               {runPills.map((pill, idx) => {
                 const isActive = loading && idx < Math.min(progress.length, runPills.length);
@@ -169,7 +164,7 @@ export default function Page() {
             <div className="mt-2 flex flex-wrap gap-2">{input.competitors.map((c) => <button key={c} onClick={() => setInput((s) => ({ ...s, competitors: s.competitors.filter((x) => x !== c) }))} className="rounded-full border border-slate-300 px-3 py-1 text-xs">{c} ×</button>)}</div>
           </div>
 
-          <button onClick={() => setAdvanced((s) => !s)} className="mt-4 text-sm font-medium text-blue-700 hover:underline">{advanced ? "Hide advanced inputs" : "Show advanced inputs"}</button>
+          <button onClick={() => setAdvanced((s) => !s)} className="mt-4 text-sm font-medium text-blue-700 hover:underline">{advanced ? "Hide advanced controls" : "Show advanced controls"}</button>
           {advanced && (
             <div className="mt-4 space-y-4 border-t border-slate-200 pt-4">
               <label className="block text-sm"><span className="mb-1 block font-medium">Company website (optional)</span><input value={input.companyWebsite || ""} onChange={(e) => setInput((s) => ({ ...s, companyWebsite: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="https://corporate.walmart.com" /></label>
@@ -183,55 +178,45 @@ export default function Page() {
                 <div className="mt-2 space-y-1">{(input.trustedUrls || []).map((u) => <button key={u} onClick={() => setInput((s) => ({ ...s, trustedUrls: (s.trustedUrls || []).filter((x) => x !== u) }))} className="block w-full rounded border border-slate-200 px-2 py-1 text-left text-xs text-slate-700">{u} ×</button>)}</div>
               </div>
               <label className="block text-sm"><span className="mb-1 block font-medium">Notes / hypotheses</span><textarea value={input.notes || ""} onChange={(e) => setInput((s) => ({ ...s, notes: e.target.value }))} rows={3} className="w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
-            </div>
-          )}
 
-          {advanced && (
-            <>
-              <button onClick={() => setGovernanceOpen((s) => !s)} className="mt-4 text-sm font-medium text-blue-700 hover:underline">{governanceOpen ? "Hide source governance panel" : "Show source governance panel"}</button>
+              <button onClick={() => setGovernanceOpen((s) => !s)} className="text-sm font-medium text-blue-700 hover:underline">{governanceOpen ? "Hide source governance" : "Show source governance"}</button>
               {governanceOpen && input.governance && (
-                <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm font-semibold text-slate-800">Source governance</p>
-              <div className="grid gap-2 sm:grid-cols-2 text-sm">
-                {[
-                  ["officialCompany", "Official company pages"],
-                  ["officialCompetitor", "Official competitor pages"],
-                  ["news", "News sources"],
-                  ["analystResearch", "Analyst/research sources"],
-                  ["regulatoryFilings", "Regulatory filings"],
-                  ["forumsBlogs", "Forums/blogs"],
-                ].map(([key, label]) => (
-                  <label key={key} className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={input.governance!.sourceClassFilters[key as keyof typeof input.governance.sourceClassFilters]}
-                      onChange={(e) => setInput((s) => ({ ...s, governance: { ...s.governance!, sourceClassFilters: { ...s.governance!.sourceClassFilters, [key]: e.target.checked } } }))}
-                    />
-                    {label}
+                <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-800">Source governance</p>
+                  <div className="grid gap-2 sm:grid-cols-2 text-sm">
+                    {[
+                      ["officialCompany", "Official company pages"],
+                      ["officialCompetitor", "Official competitor pages"],
+                      ["news", "News sources"],
+                      ["analystResearch", "Analyst/research sources"],
+                      ["regulatoryFilings", "Regulatory filings"],
+                      ["forumsBlogs", "Forums/blogs"],
+                    ].map(([key, label]) => (
+                      <label key={key} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={input.governance!.sourceClassFilters[key as keyof typeof input.governance.sourceClassFilters]}
+                          onChange={(e) => setInput((s) => ({ ...s, governance: { ...s.governance!, sourceClassFilters: { ...s.governance!.sourceClassFilters, [key]: e.target.checked } } }))}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={input.governance.excludeForumsBlogs} onChange={(e) => setInput((s) => ({ ...s, governance: { ...s.governance!, excludeForumsBlogs: e.target.checked } }))} />
+                    Exclude forums/blogs even if discovered via search
                   </label>
-                ))}
-              </div>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={input.governance.excludeForumsBlogs} onChange={(e) => setInput((s) => ({ ...s, governance: { ...s.governance!, excludeForumsBlogs: e.target.checked } }))} />
-                Exclude forums/blogs even if discovered via search
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block">Max search results: {input.governance.maxSearchResults}</span>
-                <input type="range" min={10} max={80} step={5} value={input.governance.maxSearchResults} onChange={(e) => setInput((s) => ({ ...s, governance: { ...s.governance!, maxSearchResults: Number(e.target.value) } }))} className="w-full" />
-              </label>
-              <div className="grid gap-3 sm:grid-cols-2 text-sm">
-                <label>Official weight: {input.governance.weights.official.toFixed(2)}<input type="range" min={0} max={1.5} step={0.05} value={input.governance.weights.official} onChange={(e) => setInput((s) => ({ ...s, governance: { ...s.governance!, weights: { ...s.governance!.weights, official: Number(e.target.value) } } }))} className="w-full" /></label>
-                <label>News weight: {input.governance.weights.news.toFixed(2)}<input type="range" min={0} max={1.5} step={0.05} value={input.governance.weights.news} onChange={(e) => setInput((s) => ({ ...s, governance: { ...s.governance!, weights: { ...s.governance!.weights, news: Number(e.target.value) } } }))} className="w-full" /></label>
-                <label>Analyst weight: {input.governance.weights.analyst.toFixed(2)}<input type="range" min={0} max={1.5} step={0.05} value={input.governance.weights.analyst} onChange={(e) => setInput((s) => ({ ...s, governance: { ...s.governance!, weights: { ...s.governance!.weights, analyst: Number(e.target.value) } } }))} className="w-full" /></label>
-                <label>Filings weight: {input.governance.weights.filings.toFixed(2)}<input type="range" min={0} max={1.5} step={0.05} value={input.governance.weights.filings} onChange={(e) => setInput((s) => ({ ...s, governance: { ...s.governance!, weights: { ...s.governance!.weights, filings: Number(e.target.value) } } }))} className="w-full" /></label>
-              </div>
-            </div>
+                  <label className="block text-sm">
+                    <span className="mb-1 block">Max search results: {input.governance.maxSearchResults}</span>
+                    <input type="range" min={10} max={80} step={5} value={input.governance.maxSearchResults} onChange={(e) => setInput((s) => ({ ...s, governance: { ...s.governance!, maxSearchResults: Number(e.target.value) } }))} className="w-full" />
+                  </label>
+                </div>
               )}
-            </>
+            </div>
           )}
 
           <div className="mt-5 flex flex-wrap gap-3">
-            <button disabled={loading || !canGenerate} onClick={runGenerate} className="rounded-xl bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{loading ? `Generating memo${loadingDots}` : "Generate briefing memo"}</button>
+            <button disabled={loading || !canGenerate} onClick={runGenerate} className="rounded-xl bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{loading ? `Run in progress${loadingDots}` : "Generate briefing memo"}</button>
           </div>
 
           {(progress.length > 0 || notices.length > 0) && (
@@ -244,7 +229,7 @@ export default function Page() {
       </section>
 
       <section className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
-        {brief ? <MemoView brief={brief} /> : <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-600">Run a company query to generate a live memo from current public sources.</div>}
+        {brief ? <MemoView brief={brief} /> : <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-600">Run a company query to generate a live intelligence memo.</div>}
       </section>
     </main>
   );

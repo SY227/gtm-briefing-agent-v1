@@ -1,18 +1,15 @@
-# GTM Briefing Agent v1 (Single-Page Operational Tool)
+# GTM Briefing Agent v1 (Single-Page Intelligence Workflow)
 
-A Vercel-ready, single-page competitive intelligence memo generator for founders, operators, product marketers, GTM leaders, and analysts.
+A Vercel-ready, single-page, evidence-aware competitive intelligence workflow for founders, operators, product marketers, GTM leaders, and analysts.
 
 ## Product direction
 - One primary route: `/`
-- Compact intake form + expandable advanced inputs
-- Source governance panel (class filters, forum/blog exclusion, weighting sliders)
-- Inline source IDs in evidence claims (e.g., S1, S2) and tiered source model
-- Confidence decomposition (coverage, recency, source quality)
-- Run-to-run comparison note for same company in local history
-- Explicit generation states
-- Executive-style memo output (not dashboard cards)
-- Date-sensitive evidence handling with freshness audit
-- Clear mode labeling: **live** or **error fallback** (no synthetic demo report)
+- Compact intake + run-oriented workflow UI
+- Visible multi-stage system run (normalization, discovery, collection, audit, synthesis, formatting)
+- Advanced controls are secondary (source governance is available but de-emphasized)
+- Executive memo output optimized for internal sharing and screenshots
+- Explicit live vs error-fallback behavior
+- Freshness and confidence handling kept explicit
 
 ## Stack
 - Next.js App Router + TypeScript
@@ -38,47 +35,46 @@ npm run dev
 ```
 Open `http://localhost:3000`.
 
-## Environment variables
+## Environment variable
 Required for live generation:
 - `GEMINI_API_KEY`
 
-If missing, the API returns an explicit `error-fallback` memo with clear failure notes (no fake/demo narrative).
+If missing, the API returns an explicit `error-fallback` memo (no fake demo narrative).
 
-## Live vs fallback
-- **Live mode**: Gemini + evidence pipeline executed successfully.
-- **Error fallback mode**: key missing or generation failed; response is explicit and marked incomplete.
+## Runtime behavior
+- **Live mode**: multi-stage backend run succeeds.
+- **Error fallback**: generation failed or key missing; report clearly marked incomplete.
 
-## Evidence + freshness framework
-Backend pipeline:
-1. Intake normalization
-2. Search stage across public web/news feeds
-   - Bing Web RSS
-   - Bing News RSS
-   - Google News RSS
-3. Evidence collection
-   - trusted URLs first
-   - official company/competitor sites (+ practical path probing)
-   - search-derived public pages
-4. Freshness audit (detected dates + recency status)
+## Multi-stage pipeline
+1. Input normalization (including typo correction hints)
+2. Source discovery (public search + official pages)
+3. Evidence collection and source labeling
+4. Freshness audit and recency status
 5. Synthesis (observed vs inferred separation)
-6. Presentation formatting
+6. Confidence formatting and memo presentation
 
-Freshness logic:
-- If no explicit dates are detected, freshness is marked **stale/limited**.
-- If freshest evidence is older than 90 days, recency-sensitive claims are constrained.
-- "What Changed Recently" and pricing sections include date context or "date not confirmed".
+## Freshness handling
+- If explicit dates are not detected, recency-sensitive claims are constrained.
+- If newest evidence is older than 90 days, output calls out reduced recency confidence.
+- “As of” timestamp and confidence notes are always shown.
+
+## Advanced controls (secondary)
+Source governance can be opened from advanced controls:
+- source class filters
+- forum/blog exclusion
+- search depth controls
+- weighting controls
 
 ## Route structure
-- `/` main operational experience
-- `/app`, `/sample-brief`, `/how-it-works` redirect to `/` for a unified single-page product flow
+- `/` main experience
+- `/app`, `/sample-brief`, `/how-it-works` redirect to `/`
 
 ## Deployment (Vercel)
-1. Push to GitHub
-2. Import into Vercel
-3. Add `GEMINI_API_KEY` in project environment variables
-4. Deploy
+1. Push repo to GitHub (optional) or deploy directly via Vercel CLI
+2. Add `GEMINI_API_KEY` in project environment variables
+3. Deploy
 
 ## Known limitations
-- Search breadth depends on publicly accessible RSS/search results and site accessibility.
-- Some sites do not expose explicit update dates; those claims are marked with low date confidence.
-- No database in v1 (intentional for simple deployability).
+- Public-web search breadth depends on accessible RSS/search feeds and source availability.
+- Some pages do not expose reliable update dates.
+- No database in v1 (local history only).
