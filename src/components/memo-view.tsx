@@ -62,23 +62,6 @@ export function MemoView({ brief }: { brief: GTMBrief }) {
         )}
       </div>
 
-      {brief.systemRun && brief.systemRun.length > 0 && (
-        <details className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4" open>
-          <summary className="cursor-pointer text-sm font-semibold text-slate-800">System run</summary>
-          <ul className="mt-3 space-y-2 text-sm text-slate-700">
-            {brief.systemRun.map((s, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <span className={`mt-1 inline-block h-2.5 w-2.5 rounded-full ${s.status === "done" ? "bg-emerald-500" : s.status === "failed" ? "bg-rose-500" : "bg-amber-500"}`} />
-                <div>
-                  <span className="font-medium">{s.step}</span>
-                  <p className="text-slate-600">{s.detail}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-
       <section className="space-y-8">
         <div>
           <div className="mb-2 flex items-center justify-between"><h3 className="text-lg font-semibold">Executive Summary</h3><Copy text={brief.executiveSummary} /></div>

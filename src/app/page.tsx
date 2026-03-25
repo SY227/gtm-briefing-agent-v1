@@ -46,7 +46,6 @@ export default function Page() {
   const [governanceOpen, setGovernanceOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingDots, setLoadingDots] = useState(".");
-  const [progress, setProgress] = useState<string[]>([]);
   const [notices, setNotices] = useState<string[]>([]);
   const [brief, setBrief] = useState<GTMBrief | null>(null);
   const [history, setHistory] = useState<GTMBrief[]>([]);
@@ -72,19 +71,9 @@ export default function Page() {
 
   const canGenerate = useMemo(() => input.primaryCompany.trim().length > 1, [input.primaryCompany]);
 
-  const runPills = ["Normalize", "Discover", "Collect", "Audit", "Synthesize", "Format"];
-
   async function runGenerate() {
     setLoading(true);
     setNotices([]);
-    setProgress([
-      "Input normalization",
-      "Source discovery",
-      "Evidence collection",
-      "Freshness audit",
-      "Synthesis",
-      "Confidence formatting",
-    ]);
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -94,23 +83,17 @@ export default function Page() {
       const data = (await res.json()) as GenerateResponse;
       setBrief(data.brief);
 
-      const previous = history.find((h) => h.company.toLowerCase() === data.brief.company.toLowerCase());
-      const deltaNotice = previous
-        ? `Since last run (${new Date(previous.asOf).toLocaleDateString()}): signal count ${previous.latestVerifiedSignals.length} → ${data.brief.latestVerifiedSignals.length}.`
-        : undefined;
-
-      const nextNotices = [...(data.notices || []), ...(deltaNotice ? [deltaNotice] : [])];
-      setNotices(nextNotices);
-      if (data.generationError) setNotices((n) => [...n, `Generation issue: ${data.generationError}`]);
+      if (data.generationError) {
+        setNotices([`Generation issue: ${data.generationError}`]);
+      } else {
+        setNotices([]);
+      }
 
       const nextHistory = [data.brief, ...history.filter((h) => h.id !== data.brief.id)].slice(0, 20);
       setHistory(nextHistory);
       localStorage.setItem("ci-brief-history-v2", JSON.stringify(nextHistory));
-
-      setProgress(["Run complete"]);
     } catch {
       setNotices(["Request failed before server processing. Please retry."]);
-      setProgress(["Run failed"]);
     } finally {
       setLoading(false);
     }
@@ -128,23 +111,6 @@ export default function Page() {
 
       <section className="mx-auto max-w-5xl px-4 sm:px-6">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Workflow run</p>
-            <div className="flex flex-wrap gap-2">
-              {runPills.map((pill, idx) => {
-                const isActive = loading && idx < Math.min(progress.length, runPills.length);
-                return (
-                  <span
-                    key={pill}
-                    className={`rounded-full border px-2.5 py-1 text-xs ${isActive ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-300 bg-white text-slate-600"}`}
-                  >
-                    {pill}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-
           <div className="grid gap-4 md:grid-cols-2">
             <label className="text-sm"><span className="mb-1 block font-medium">Primary company</span><input value={input.primaryCompany} onChange={(e) => setInput((s) => ({ ...s, primaryCompany: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Walmart" /></label>
             <label className="text-sm"><span className="mb-1 block font-medium">Objective / use case</span><input value={input.objective} onChange={(e) => setInput((s) => ({ ...s, objective: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Sales prep / strategy review / investor memo" /></label>
@@ -219,10 +185,9 @@ export default function Page() {
             <button disabled={loading || !canGenerate} onClick={runGenerate} className="rounded-xl bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{loading ? `Run in progress${loadingDots}` : "Generate briefing memo"}</button>
           </div>
 
-          {(progress.length > 0 || notices.length > 0) && (
-            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-              {progress.map((p, i) => <div key={i}>• {p}</div>)}
-              {notices.map((n, i) => <div key={`n-${i}`} className="mt-1 text-amber-800">Note: {n}</div>)}
+          {notices.length > 0 && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              {notices.map((n, i) => <div key={`n-${i}`}>{n}</div>)}
             </div>
           )}
         </div>
