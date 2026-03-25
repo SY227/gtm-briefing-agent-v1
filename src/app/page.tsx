@@ -72,6 +72,15 @@ export default function Page() {
 
   const canGenerate = useMemo(() => input.primaryCompany.trim().length > 1, [input.primaryCompany]);
 
+  const runPills = [
+    "Normalize",
+    "Discover",
+    "Collect",
+    "Audit",
+    "Synthesize",
+    "Score",
+  ];
+
   async function runGenerate() {
     setLoading(true);
     setNotices([]);
@@ -118,11 +127,29 @@ export default function Page() {
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <section className="mx-auto max-w-5xl px-4 pb-6 pt-10 sm:px-6">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Agentic Market Intelligence System</p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">Multi-stage, source-audited competitive intelligence agent for GTM and strategy teams.</h1>
+        <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">Build executive-grade competitive briefs with a visible multi-stage agent workflow.</h1>
+        <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">Designed to demonstrate practical agent orchestration: input normalization, source discovery, evidence audit, synthesis, and confidence scoring.</p>
       </section>
 
       <section className="mx-auto max-w-5xl px-4 sm:px-6">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="mb-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Agent run status</p>
+            <div className="flex flex-wrap gap-2">
+              {runPills.map((pill, idx) => {
+                const isActive = loading && idx < Math.min(progress.length, runPills.length);
+                return (
+                  <span
+                    key={pill}
+                    className={`rounded-full border px-2.5 py-1 text-xs ${isActive ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-300 bg-white text-slate-600"}`}
+                  >
+                    {pill}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2">
             <label className="text-sm"><span className="mb-1 block font-medium">Primary company</span><input value={input.primaryCompany} onChange={(e) => setInput((s) => ({ ...s, primaryCompany: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Walmart" /></label>
             <label className="text-sm"><span className="mb-1 block font-medium">Objective / use case</span><input value={input.objective} onChange={(e) => setInput((s) => ({ ...s, objective: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Sales prep / strategy review / investor memo" /></label>
