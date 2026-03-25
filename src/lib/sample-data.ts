@@ -2,170 +2,154 @@ import { GTMBrief } from "./types";
 
 export const sampleBriefs: GTMBrief[] = [
   {
-    id: "sample-notion-clickup",
+    id: "sample-microsoft-slack",
     createdAt: new Date().toISOString(),
-    company: "Notion",
-    competitors: ["ClickUp", "Asana"],
-    objective: "Product comparison",
-    audience: "Product marketing",
-    executiveSummary:
-      "Notion continues to position as an all-in-one workspace while competitors emphasize execution velocity and AI-assisted workflows. GTM opportunity is to frame Notion as the flexible system of record for cross-functional teams with stronger narrative around enterprise governance.",
-    whatChanged: [
-      "Higher visibility of AI assistant features in core navigation and marketing pages.",
-      "Broader team plan messaging with collaboration and admin controls highlighted.",
-      "Competitors increasingly claim faster setup and clearer out-of-the-box project workflows.",
-    ],
-    productPricingSignals: [
-      "Freemium entry remains central; monetization focus appears to be team adoption and admin capabilities.",
-      "AI capabilities are used as value expansion signals rather than standalone positioning.",
-      "Competitors frame packaged templates and automations as immediate ROI.",
-    ],
-    likelyICP: [
-      "Cross-functional startups scaling from 20 to 500 employees.",
-      "Product and ops leaders needing docs + project orchestration in one place.",
-      "Teams seeking a customizable operating layer over rigid task tools.",
-    ],
-    messagingPositioning: [
-      "Core narrative: flexible connected workspace, not just task tracking.",
-      "Enterprise reassurance through security, controls, and knowledge centralization.",
-      "Emphasis on reducing tool sprawl and context switching.",
-    ],
-    risks: [
-      "Perception that flexibility requires more setup than competitor templates.",
-      "AI differentiation could blur as category claims converge.",
-      "Task-execution buyers may still default to execution-first incumbents.",
-    ],
-    opportunities: [
-      "Lead with time-to-value playbooks for common operational motions.",
-      "Bundle governance + AI + search as enterprise productivity outcome.",
-      "Create sharper replacement messaging for fragmented doc/task stacks.",
-    ],
-    battlecard: {
-      strengths: [
-        "Strong brand affinity across product and startup communities.",
-        "High flexibility across docs, wikis, and lightweight project workflows.",
-        "Large ecosystem of templates and integrations.",
-      ],
-      weaknesses: [
-        "Can appear open-ended for teams that need strict process controls.",
-        "Execution and reporting depth may feel lighter than PM-specialized tools.",
-      ],
-      likelyObjections: [
-        "Will this be too customizable and hard to standardize?",
-        "Can leadership get reliable portfolio reporting?",
-      ],
-      responseAngles: [
-        "Show guided workspace blueprints with opinionated operating cadences.",
-        "Demonstrate rollups and dashboards tied to leadership KPIs.",
-      ],
-      say: [
-        "Use Notion when your team needs one system for knowledge + execution.",
-        "Standardize quickly with prebuilt workflows, then adapt safely as you scale.",
-      ],
-      avoid: [
-        "Avoid claiming Notion replaces deep specialized PM systems in every scenario.",
-        "Avoid dismissing governance concerns—address them directly.",
-      ],
-    },
-    recommendedActions: {
-      sales: [
-        "Open discovery with tool sprawl pain and handoff breakdowns.",
-        "Use a 14-day migration plan artifact during late-stage deals.",
-      ],
-      strategy: [
-        "Prioritize packaging around operating-system narrative by segment.",
-        "Strengthen migration proof points for enterprise buyers.",
-      ],
-      leadership: [
-        "Track win/loss against execution-first PM tools by deal size.",
-        "Invest in ICP-specific onboarding templates with measurable outcomes.",
-      ],
-    },
-    confidenceCoverage: {
-      confidence: "Medium",
-      evidenceQuality:
-        "Based on publicly visible product/pricing narratives and category-level patterns.",
-      knownGaps: [
-        "No private usage telemetry or pipeline conversion data included.",
-        "Limited to publicly available messaging at time of brief.",
-      ],
-    },
-    sources: [
-      { title: "Notion homepage", url: "https://www.notion.so", type: "public-page" },
-      { title: "ClickUp homepage", url: "https://clickup.com", type: "public-page" },
-      { title: "Asana homepage", url: "https://asana.com", type: "public-page" },
-    ],
-    demoMode: true,
-  },
-  {
-    id: "sample-stripe-adyen",
-    createdAt: new Date().toISOString(),
-    company: "Stripe",
-    competitors: ["Adyen", "Braintree"],
+    asOf: new Date().toISOString(),
+    mode: "demo",
+    company: "Microsoft Teams",
+    competitors: ["Slack"],
     objective: "Executive market snapshot",
     audience: "Executive",
     executiveSummary:
-      "Stripe maintains strong developer-led distribution while enterprise buyers increasingly evaluate total payment performance and global complexity handling. Strategic positioning opportunity is to pair developer speed with concrete enterprise economics and reliability outcomes.",
+      "Observed public signals suggest continued packaging emphasis around Teams as part of Microsoft 365 value, while Slack messaging remains centered on cross-tool workflow productivity. Freshness is mixed: current high-level positioning is recent, but detailed pricing deltas are not consistently timestamped across pages.",
+    latestVerifiedSignals: [
+      {
+        claim: "Teams remains prominently positioned as a collaboration layer within Microsoft 365 packaging.",
+        sourceUrl: "https://www.microsoft.com/en/microsoft-teams/group-chat-software",
+        observedDate: "date not confirmed",
+        dateConfidence: "low",
+      },
+      {
+        claim: "Slack continues to lead with productivity and channel-based workflow language on primary marketing pages.",
+        sourceUrl: "https://slack.com",
+        observedDate: "date not confirmed",
+        dateConfidence: "low",
+      },
+    ],
     whatChanged: [
-      "Continued expansion of financial infrastructure narrative beyond basic payments.",
-      "Competitors emphasize enterprise-grade optimization and international scale depth.",
-      "Category messaging increasingly tied to AI fraud prevention and conversion lift.",
+      {
+        claim: "Potential changes in feature emphasis are visible in product messaging, but exact recency is not always explicitly dated.",
+        observedDate: "date not confirmed",
+        dateConfidence: "low",
+      },
     ],
     productPricingSignals: [
-      "Pricing narratives remain usage-centric with emphasis on platform breadth.",
-      "Enterprise buyers likely negotiate around optimization and regional capabilities.",
-      "Differentiation pressure rising around measurable authorization gains.",
+      {
+        claim: "Bundle positioning appears stronger than standalone pricing communication in top-level pages.",
+        observedDate: "date not confirmed",
+        dateConfidence: "low",
+      },
     ],
     likelyICP: [
-      "Digital-first companies needing rapid integration and global expansion.",
-      "Scale-ups maturing from startup simplicity to multi-region operations.",
-      "Platforms and marketplaces with complex payout and compliance needs.",
+      "Mid-market and enterprise organizations standardizing collaboration under existing productivity suites.",
+      "IT-led buyers balancing governance, integration, and cost consolidation.",
     ],
     messagingPositioning: [
-      "Developer-first, infrastructure-level reliability and speed.",
-      "Unified stack messaging to reduce vendor fragmentation.",
-      "Strong ecosystem and extensibility narrative.",
+      "Platform consolidation and enterprise compatibility.",
+      "Workflow productivity and cross-functional collaboration outcomes.",
     ],
     risks: [
-      "Enterprise economic story may be less explicit than optimization-first rivals.",
-      "Commodity perception risk in core payments layer.",
-      "Regional depth comparisons can create uncertainty in late-stage enterprise deals.",
+      "Recency ambiguity on detailed product/pricing updates can reduce confidence in short-window claims.",
+      "Positioning convergence across major collaboration vendors increases differentiation pressure.",
     ],
     opportunities: [
-      "Quantify business impact beyond integration speed.",
-      "Segment go-to-market by transaction complexity and geography.",
-      "Promote bundled capabilities as strategic margin lever.",
+      "Lead with dated proof points where available to improve credibility in executive narratives.",
+      "Use role-specific ROI framing for finance, IT, and frontline managers.",
     ],
     battlecard: {
-      strengths: ["Developer experience", "Platform breadth", "Global brand trust"],
-      weaknesses: ["Potential commodity framing", "Enterprise ROI articulation gaps"],
-      likelyObjections: [
-        "Can you beat specialist performance in our key markets?",
-        "What is the quantified margin impact at our scale?",
-      ],
-      responseAngles: [
-        "Lead with measured conversion, uptime, and launch-speed outcomes.",
-        "Map architecture flexibility to future expansion plans.",
-      ],
-      say: ["Use Stripe to scale faster without rebuilding payment infrastructure."],
-      avoid: ["Avoid generic 'all-in-one' claims without economic proof points."],
+      strengths: ["Broad ecosystem alignment", "Enterprise distribution scale"],
+      weaknesses: ["Potential complexity in mixed-tool environments"],
+      likelyObjections: ["How quickly can teams migrate with minimal disruption?"],
+      responseAngles: ["Show phased rollout and measurable adoption milestones."],
+      say: ["Prioritize outcomes and governance clarity over feature checklist debates."],
+      avoid: ["Do not overstate dated or unverified release claims."],
     },
     recommendedActions: {
-      sales: ["Package ROI templates by vertical and region."],
-      strategy: ["Deepen enterprise proof-point library."],
-      leadership: ["Align product roadmap storytelling to CFO-level outcomes."],
+      sales: ["Use a dated evidence slide in first-call prep materials."],
+      strategy: ["Track top 10 recurring competitor claims with source timestamps."],
+      leadership: ["Review stale-signal risk monthly and refresh positioning assets."],
+    },
+    freshness: {
+      status: "mixed",
+      summary: "Some usable public signals are visible, but many pages do not expose explicit update dates.",
     },
     confidenceCoverage: {
       confidence: "Medium",
-      evidenceQuality: "Public pages + category dynamics, no private contract data.",
-      knownGaps: ["No customer-level pricing agreements included."],
+      evidenceQuality: "Public web evidence with partial recency metadata.",
+      knownGaps: ["No private roadmap or contract data.", "Some sections have date-not-confirmed evidence."],
+    },
+    observedVsInferred: {
+      observed: ["Current headline positioning language on company websites."],
+      inferred: ["Likely deal-motion implications for GTM teams."],
     },
     sources: [
-      { title: "Stripe website", url: "https://stripe.com", type: "public-page" },
-      { title: "Adyen website", url: "https://www.adyen.com", type: "public-page" },
+      {
+        title: "Microsoft Teams landing page",
+        url: "https://www.microsoft.com/en/microsoft-teams/group-chat-software",
+        type: "company-site",
+        fetchedAt: new Date().toISOString(),
+      },
+      {
+        title: "Slack homepage",
+        url: "https://slack.com",
+        type: "competitor-site",
+        fetchedAt: new Date().toISOString(),
+      },
     ],
-    demoMode: true,
+    generationNotes: ["Sample demo report."],
+  },
+  {
+    id: "sample-shopify-bigcommerce",
+    createdAt: new Date().toISOString(),
+    asOf: new Date().toISOString(),
+    mode: "demo",
+    company: "Shopify",
+    competitors: ["BigCommerce"],
+    objective: "Sales prep",
+    audience: "Sales team",
+    executiveSummary:
+      "Public signals show Shopify continuing to position around merchant scale and ecosystem leverage. For this sample, the strongest evidence is evergreen positioning language; date-specific product shift claims should be treated as limited unless directly timestamped in source pages.",
+    latestVerifiedSignals: [
+      { claim: "Shopify messaging emphasizes commerce platform breadth and merchant growth outcomes.", sourceUrl: "https://www.shopify.com", observedDate: "date not confirmed", dateConfidence: "low" },
+      { claim: "BigCommerce messaging highlights open SaaS and B2B/B2C flexibility.", sourceUrl: "https://www.bigcommerce.com", observedDate: "date not confirmed", dateConfidence: "low" },
+    ],
+    whatChanged: [
+      { claim: "Insufficient dated evidence to assert specific recent product or pricing changes with high confidence.", observedDate: "date not confirmed", dateConfidence: "low" },
+    ],
+    productPricingSignals: [
+      { claim: "Both vendors emphasize platform value outcomes over highly granular dated pricing deltas in top-level messaging.", observedDate: "date not confirmed", dateConfidence: "low" },
+    ],
+    likelyICP: ["Digital brands scaling multi-channel commerce.", "Teams balancing speed-to-market with extensibility."],
+    messagingPositioning: ["Platform scale narrative", "Ecosystem and flexibility narrative"],
+    risks: ["Low date precision in available pages for short-window claims."],
+    opportunities: ["Use cautious, evidence-first talk tracks in customer-facing comparisons."],
+    battlecard: {
+      strengths: ["Strong ecosystem recognition"],
+      weaknesses: ["Potential migration sensitivity"],
+      likelyObjections: ["How hard is platform switching at our scale?"],
+      responseAngles: ["Quantify phased migration and operational risk controls."],
+      say: ["Anchor arguments in verifiable source-backed differences."],
+      avoid: ["Avoid overconfident claims without timestamps."],
+    },
+    recommendedActions: {
+      sales: ["Use confidence labels in every competitive slide."],
+      strategy: ["Increase coverage with dated release-note and newsroom URLs."],
+      leadership: ["Require evidence freshness checks before quarterly narrative updates."],
+    },
+    freshness: { status: "stale", summary: "No strong sub-90-day evidence identified in this sample." },
+    confidenceCoverage: {
+      confidence: "Low",
+      evidenceQuality: "Limited dated evidence in sample source set.",
+      knownGaps: ["No dated press/release pages included."],
+    },
+    observedVsInferred: {
+      observed: ["Current high-level website positioning."],
+      inferred: ["Sales implications derived from positioning patterns."],
+    },
+    sources: [
+      { title: "Shopify homepage", url: "https://www.shopify.com", type: "company-site", fetchedAt: new Date().toISOString() },
+      { title: "BigCommerce homepage", url: "https://www.bigcommerce.com", type: "competitor-site", fetchedAt: new Date().toISOString() },
+    ],
+    generationNotes: ["Sample demo report."],
   },
 ];
-
-export const featuredSampleBrief = sampleBriefs[0];

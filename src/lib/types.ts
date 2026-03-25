@@ -17,11 +17,22 @@ export interface BriefInput {
   quickMode?: QuickMode;
 }
 
+export type SourceType = "user-provided" | "company-site" | "competitor-site" | "public-page";
+
 export interface SourceItem {
   title: string;
   url: string;
-  type: "user-provided" | "public-page" | "model-inference";
+  type: SourceType;
+  fetchedAt: string;
+  detectedDate?: string;
   note?: string;
+}
+
+export interface EvidenceLine {
+  claim: string;
+  sourceUrl?: string;
+  observedDate?: string;
+  dateConfidence: "high" | "medium" | "low";
 }
 
 export interface Battlecard {
@@ -36,13 +47,16 @@ export interface Battlecard {
 export interface GTMBrief {
   id: string;
   createdAt: string;
+  asOf: string;
+  mode: "live" | "demo" | "error-fallback";
   company: string;
   competitors: string[];
   objective: string;
   audience: string;
   executiveSummary: string;
-  whatChanged: string[];
-  productPricingSignals: string[];
+  latestVerifiedSignals: EvidenceLine[];
+  whatChanged: EvidenceLine[];
+  productPricingSignals: EvidenceLine[];
   likelyICP: string[];
   messagingPositioning: string[];
   risks: string[];
@@ -53,11 +67,27 @@ export interface GTMBrief {
     strategy: string[];
     leadership: string[];
   };
+  freshness: {
+    freshestEvidenceDate?: string;
+    daysSinceFreshest?: number;
+    status: "current" | "mixed" | "stale";
+    summary: string;
+  };
   confidenceCoverage: {
     confidence: "Low" | "Medium" | "High";
     evidenceQuality: string;
     knownGaps: string[];
   };
   sources: SourceItem[];
-  demoMode?: boolean;
+  observedVsInferred: {
+    observed: string[];
+    inferred: string[];
+  };
+  generationNotes?: string[];
+}
+
+export interface GenerateResponse {
+  brief: GTMBrief;
+  notices: string[];
+  generationError?: string;
 }

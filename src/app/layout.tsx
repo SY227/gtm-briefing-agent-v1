@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "BriefingAgent | Competitive Intelligence / GTM Briefing Agent",
-  description: "Source-backed company briefings and battlecards for GTM teams.",
+  title: "GTM Briefing Agent | Executive Memo Generator",
+  description: "Single-page competitive intelligence memo tool with source-aware freshness checks.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
