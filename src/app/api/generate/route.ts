@@ -318,7 +318,6 @@ export async function POST(req: Request) {
   const notices: string[] = [];
   if (sources.length === 0) notices.push("No evidence pages were reachable from public search and provided inputs. Add official company/competitor URLs.");
   if (freshness.status !== "current") notices.push(`Freshness status is ${freshness.status}. ${freshness.summary}`);
-  notices.push(`Governance active: maxResults=${governance.maxSearchResults}, excludeForumsBlogs=${governance.excludeForumsBlogs}.`);
 
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
