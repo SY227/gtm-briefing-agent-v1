@@ -64,6 +64,56 @@ function inferDomainsFromName(name: string) {
   return [`https://www.${token}.com`, `https://${token}.com`, `https://corporate.${token}.com`];
 }
 
+function levenshtein(a: string, b: string) {
+  const dp = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i++) dp[i][0] = i;
+  for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+    }
+  }
+  return dp[a.length][b.length];
+}
+
+function cleanToken(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function titleCase(value: string) {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1).toLowerCase() : value;
+}
+
+function guessCompanyFromUrl(url: string) {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    const root = host.split(".")[0];
+    if (!root) return undefined;
+    return titleCase(root);
+  } catch {
+    return undefined;
+  }
+}
+
+function bestTypoCorrection(inputName: string, candidates: string[]) {
+  const cleanInput = cleanToken(inputName);
+  if (!cleanInput || cleanInput.length < 4) return undefined;
+  let best: { value: string; dist: number } | undefined;
+  for (const c of candidates) {
+    const cleaned = cleanToken(c);
+    if (!cleaned || cleaned.length < 4) continue;
+    const dist = levenshtein(cleanInput, cleaned);
+    const normalizedDist = dist / Math.max(cleanInput.length, cleaned.length);
+    if (normalizedDist <= 0.3) {
+      if (!best || dist < best.dist) best = { value: c, dist };
+    }
+  }
+  if (!best) return undefined;
+  if (cleanToken(best.value) === cleanInput) return undefined;
+  return best.value;
+}
+
 function classifyUrl(url: string): ProbeTarget["class"] {
   const u = url.toLowerCase();
   if (u.includes("sec.gov") || u.includes("investor") || u.includes("annual-report") || u.includes("10-k") || u.includes("10q")) return "filing";
@@ -178,6 +228,47 @@ async function webSearchTargets(input: BriefInput) {
 
   const results = await Promise.all(providers.map(searchRss));
   return results.flat().slice(0, 40);
+}
+
+async function normalizeInputTypos(input: BriefInput) {
+  const candidateSet = new Set<string>();
+
+  const namesToCheck = [input.primaryCompany, ...input.competitors].filter(Boolean);
+  for (const name of namesToCheck) {
+    const queryFeeds = [
+      `https://www.bing.com/search?q=${encodeURIComponent(`${name} company`)}&format=rss`,
+      `https://news.google.com/rss/search?q=${encodeURIComponent(`${name} company`)}`,
+    ];
+    const searchResults = (await Promise.all(queryFeeds.map(searchRss))).flat();
+    searchResults.forEach((r) => {
+      if (r.title) {
+        r.title
+          .split(/[^A-Za-z0-9]+/)
+          .filter((x) => x.length >= 4)
+          .forEach((x) => candidateSet.add(titleCase(x)));
+      }
+      const fromUrl = guessCompanyFromUrl(r.url);
+      if (fromUrl) candidateSet.add(fromUrl);
+    });
+  }
+
+  const candidates = Array.from(candidateSet);
+  const primaryCorrection = bestTypoCorrection(input.primaryCompany, candidates);
+  const competitorCorrections = input.competitors.map((c) => bestTypoCorrection(c, candidates) || c);
+
+  return {
+    normalizedInput: {
+      ...input,
+      primaryCompany: primaryCorrection || input.primaryCompany,
+      competitors: competitorCorrections,
+    },
+    corrections: [
+      ...(primaryCorrection ? [`Interpreted company '${input.primaryCompany}' as '${primaryCorrection}'.`] : []),
+      ...input.competitors
+        .map((c, i) => (competitorCorrections[i] !== c ? `Interpreted competitor '${c}' as '${competitorCorrections[i]}'.` : null))
+        .filter(Boolean) as string[],
+    ],
+  };
 }
 
 async function fetchEvidence(target: ProbeTarget) {
@@ -346,12 +437,14 @@ function makeErrorBrief(input: BriefInput, reason: string): GTMBrief {
 }
 
 export async function POST(req: Request) {
-  const input = (await req.json()) as BriefInput;
+  const rawInput = (await req.json()) as BriefInput;
 
   if (!process.env.GEMINI_API_KEY) {
     const reason = "Live mode unavailable: GEMINI_API_KEY is not configured.";
-    return NextResponse.json({ brief: makeErrorBrief(input, reason), notices: [reason], generationError: reason } satisfies GenerateResponse);
+    return NextResponse.json({ brief: makeErrorBrief(rawInput, reason), notices: [reason], generationError: reason } satisfies GenerateResponse);
   }
+
+  const { normalizedInput: input, corrections } = await normalizeInputTypos(rawInput);
 
   const governance = { ...defaultGovernance, ...(input.governance || {}) };
   governance.sourceClassFilters = { ...defaultGovernance.sourceClassFilters, ...(input.governance?.sourceClassFilters || {}) };
@@ -363,7 +456,7 @@ export async function POST(req: Request) {
   const fetched = fetchedRaw.map((f, i) => ({ ...f, source: { ...f.source, sourceId: `S${i + 1}` } }));
   const freshness = freshnessFromSources(sources);
 
-  const notices: string[] = [];
+  const notices: string[] = [...corrections];
   if (sources.length === 0) notices.push("No evidence pages were reachable from public search and provided inputs. Add official company/competitor URLs.");
   if (freshness.status !== "current") notices.push(`Freshness status is ${freshness.status}. ${freshness.summary}`);
 

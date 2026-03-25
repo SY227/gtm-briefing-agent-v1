@@ -45,6 +45,7 @@ export default function Page() {
   const [advanced, setAdvanced] = useState(false);
   const [governanceOpen, setGovernanceOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingDots, setLoadingDots] = useState(".");
   const [progress, setProgress] = useState<string[]>([]);
   const [notices, setNotices] = useState<string[]>([]);
   const [brief, setBrief] = useState<GTMBrief | null>(null);
@@ -54,6 +55,20 @@ export default function Page() {
     const raw = localStorage.getItem("ci-brief-history-v2");
     if (raw) setHistory(JSON.parse(raw));
   }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingDots(".");
+      return;
+    }
+    const frames = [".", "..", "..."];
+    let i = 0;
+    const timer = setInterval(() => {
+      i = (i + 1) % frames.length;
+      setLoadingDots(frames[i]);
+    }, 350);
+    return () => clearInterval(timer);
+  }, [loading]);
 
   const canGenerate = useMemo(() => input.primaryCompany.trim().length > 1, [input.primaryCompany]);
 
@@ -185,7 +200,7 @@ export default function Page() {
           )}
 
           <div className="mt-5 flex flex-wrap gap-3">
-            <button disabled={loading || !canGenerate} onClick={runGenerate} className="rounded-xl bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{loading ? "Generating memo..." : "Generate briefing memo"}</button>
+            <button disabled={loading || !canGenerate} onClick={runGenerate} className="rounded-xl bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{loading ? `Generating memo${loadingDots}` : "Generate briefing memo"}</button>
           </div>
 
           {(progress.length > 0 || notices.length > 0) && (
