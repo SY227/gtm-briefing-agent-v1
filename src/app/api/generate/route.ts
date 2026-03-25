@@ -44,7 +44,13 @@ function safeTextFromHtml(html: string) {
 
 async function fetchEvidence(url: string, type: SourceItem["type"]) {
   try {
-    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 GTMBriefingAgent/1.1" } });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 7000);
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 GTMBriefingAgent/1.1" },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
     if (!res.ok) return null;
     const html = await res.text();
     const text = safeTextFromHtml(html);
@@ -108,6 +114,24 @@ function freshnessFromSources(sources: SourceItem[]) {
   };
 }
 
+function inferDomainsFromName(name: string) {
+  const token = name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .join("");
+
+  if (!token) return [];
+
+  return [
+    `https://www.${token}.com`,
+    `https://${token}.com`,
+    `https://corporate.${token}.com`,
+  ];
+}
+
 function buildProbeUrls(input: BriefInput) {
   const urls: { url: string; type: SourceItem["type"] }[] = [];
   const pushUnique = (url: string, type: SourceItem["type"]) => {
@@ -120,15 +144,22 @@ function buildProbeUrls(input: BriefInput) {
 
   (input.trustedUrls || []).slice(0, 8).forEach((url) => pushUnique(url, "user-provided"));
 
-  const companyOrigin = input.companyWebsite ? baseOrigin(input.companyWebsite) : "";
-  if (companyOrigin) pathHints.forEach((p) => pushUnique(`${companyOrigin}${p}`, "company-site"));
+  const explicitCompanyOrigins = [input.companyWebsite, ...inferDomainsFromName(input.primaryCompany)]
+    .filter(Boolean)
+    .map((u) => baseOrigin(u as string))
+    .filter(Boolean);
+  explicitCompanyOrigins.forEach((origin) => pathHints.forEach((p) => pushUnique(`${origin}${p}`, "company-site")));
 
-  (input.competitorWebsites || []).slice(0, 5).forEach((site) => {
+  const explicitCompetitorSites = [
+    ...(input.competitorWebsites || []),
+    ...input.competitors.flatMap(inferDomainsFromName),
+  ];
+  explicitCompetitorSites.slice(0, 8).forEach((site) => {
     const origin = baseOrigin(site);
     if (origin) pathHints.forEach((p) => pushUnique(`${origin}${p}`, "competitor-site"));
   });
 
-  return urls.slice(0, 24);
+  return urls.slice(0, 36);
 }
 
 function demoResponse(input: BriefInput, mode: GTMBrief["mode"], note: string): GenerateResponse {
@@ -166,7 +197,7 @@ export async function POST(req: Request) {
   const freshness = freshnessFromSources(sources);
 
   const notices: string[] = [];
-  if (sources.length === 0) notices.push("No evidence pages were fetched successfully from provided inputs.");
+  if (sources.length === 0) notices.push("No evidence pages were reachable from provided or inferred domains. Add company/competitor websites or trusted URLs for stronger recency coverage.");
   if (freshness.status !== "current") notices.push(`Freshness status is ${freshness.status}. ${freshness.summary}`);
 
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
