@@ -8,6 +8,27 @@ const model = "gemini-2.5-flash-lite";
 
 const pathHints = ["", "/pricing", "/product", "/products", "/docs", "/blog", "/news", "/press", "/investor-relations", "/updates"];
 
+async function webSearchUrls(query: string, limit = 6) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 7000);
+    const rssUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}&format=rss`;
+    const res = await fetch(rssUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 GTMBriefingAgent/1.2" },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return [];
+    const xml = await res.text();
+    const links = [...xml.matchAll(/<link>(https?:\/\/[^<]+)<\/link>/g)].map((m) => m[1]);
+    return links
+      .filter((u) => !u.includes("bing.com") && !u.includes("microsoft.com/en-us/bing"))
+      .slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
 function normalizeUrl(raw: string) {
   const value = raw.trim();
   if (!value) return "";
@@ -132,7 +153,7 @@ function inferDomainsFromName(name: string) {
   ];
 }
 
-function buildProbeUrls(input: BriefInput) {
+async function buildProbeUrls(input: BriefInput) {
   const urls: { url: string; type: SourceItem["type"] }[] = [];
   const pushUnique = (url: string, type: SourceItem["type"]) => {
     if (!url) return;
@@ -159,7 +180,16 @@ function buildProbeUrls(input: BriefInput) {
     if (origin) pathHints.forEach((p) => pushUnique(`${origin}${p}`, "competitor-site"));
   });
 
-  return urls.slice(0, 36);
+  const searchQueries = [
+    `${input.primaryCompany} official site pricing news`,
+    `${input.primaryCompany} product updates press release`,
+    ...input.competitors.map((c) => `${c} official site pricing product updates`),
+  ].slice(0, 6);
+
+  const searchResults = await Promise.all(searchQueries.map((q) => webSearchUrls(q, 3)));
+  searchResults.flat().forEach((url) => pushUnique(url, "public-page"));
+
+  return urls.slice(0, 48);
 }
 
 function demoResponse(input: BriefInput, mode: GTMBrief["mode"], note: string): GenerateResponse {
@@ -191,7 +221,7 @@ export async function POST(req: Request) {
     return NextResponse.json(demoResponse(input, "demo", "Live mode unavailable: GEMINI_API_KEY is not configured."));
   }
 
-  const probePlan = buildProbeUrls(input);
+  const probePlan = await buildProbeUrls(input);
   const fetched = (await Promise.all(probePlan.map((u) => fetchEvidence(u.url, u.type)))).filter(Boolean) as { source: SourceItem; text: string }[];
   const sources = fetched.map((f) => f.source);
   const freshness = freshnessFromSources(sources);
