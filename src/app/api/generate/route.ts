@@ -438,6 +438,7 @@ function makeErrorBrief(input: BriefInput, reason: string): GTMBrief {
 
 export async function POST(req: Request) {
   const rawInput = (await req.json()) as BriefInput;
+  const systemRun: GTMBrief["systemRun"] = [];
 
   if (!process.env.GEMINI_API_KEY) {
     const reason = "Live mode unavailable: GEMINI_API_KEY is not configured.";
@@ -445,12 +446,15 @@ export async function POST(req: Request) {
   }
 
   const { normalizedInput: input, corrections } = await normalizeInputTypos(rawInput);
+  systemRun.push({ step: "Input normalization", status: "done", detail: corrections.length ? corrections.join(" ") : "No typo corrections applied." });
 
   const governance = { ...defaultGovernance, ...(input.governance || {}) };
   governance.sourceClassFilters = { ...defaultGovernance.sourceClassFilters, ...(input.governance?.sourceClassFilters || {}) };
   governance.weights = { ...defaultGovernance.weights, ...(input.governance?.weights || {}) };
 
   const probePlan = await buildProbeUrls(input, governance);
+  systemRun.push({ step: "Source discovery", status: "done", detail: `Planned ${probePlan.length} candidate sources.` });
+
   const fetchedRaw = (await Promise.all(probePlan.map((t) => fetchEvidence(t)))).filter(Boolean) as { source: SourceItem; text: string }[];
   const sources = fetchedRaw.map((f, i) => ({ ...f.source, sourceId: `S${i + 1}` }));
   const fetched = fetchedRaw.map((f, i) => ({ ...f, source: { ...f.source, sourceId: `S${i + 1}` } }));
@@ -459,6 +463,17 @@ export async function POST(req: Request) {
   const notices: string[] = [...corrections];
   if (sources.length === 0) notices.push("No evidence pages were reachable from public search and provided inputs. Add official company/competitor URLs.");
   if (freshness.status !== "current") notices.push(`Freshness status is ${freshness.status}. ${freshness.summary}`);
+
+  systemRun.push({
+    step: "Evidence collection",
+    status: sources.length > 0 ? "done" : "warning",
+    detail: `${sources.length} sources fetched successfully.`,
+  });
+  systemRun.push({
+    step: "Freshness audit",
+    status: freshness.status === "current" ? "done" : "warning",
+    detail: freshness.summary,
+  });
 
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -472,8 +487,10 @@ SourceCount: ${sources.length}`;
   try {
     const plan = await ai.models.generateContent({ model, contents: plannerPrompt, config: { temperature: 0.1, responseMimeType: "application/json" } });
     plannerText = plan.text || "{}";
+    systemRun.push({ step: "Planning", status: "done", detail: "Planner stage completed." });
   } catch {
     notices.push("Planner stage failed; synthesis continued.");
+    systemRun.push({ step: "Planning", status: "warning", detail: "Planner stage failed; proceeded with synthesis." });
   }
 
   const evidencePayload = fetched.map((f) => ({ source: f.source, excerpt: f.text.slice(0, 1800) }));
@@ -563,6 +580,7 @@ Evidence=${JSON.stringify(evidencePayload).slice(0, 26000)}
       },
       sources,
       generationNotes: notices,
+      systemRun: [...systemRun, { step: "Synthesis", status: "done", detail: "Generated analyst memo from weighted evidence." }],
     };
 
     if (freshness.status !== "current") {
@@ -573,6 +591,8 @@ Evidence=${JSON.stringify(evidencePayload).slice(0, 26000)}
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Unknown synthesis error";
     const reason = `Live generation failed: ${msg}`;
-    return NextResponse.json({ brief: makeErrorBrief(input, reason), notices: [reason], generationError: reason } satisfies GenerateResponse);
+    const brief = makeErrorBrief(input, reason);
+    brief.systemRun = [...systemRun, { step: "Synthesis", status: "failed", detail: reason }];
+    return NextResponse.json({ brief, notices: [reason], generationError: reason } satisfies GenerateResponse);
   }
 }

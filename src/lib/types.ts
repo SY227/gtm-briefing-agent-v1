@@ -67,6 +67,12 @@ export interface Battlecard {
   avoid: string[];
 }
 
+export interface SystemRunStep {
+  step: string;
+  status: "done" | "warning" | "failed";
+  detail: string;
+}
+
 export interface GTMBrief {
   id: string;
   createdAt: string;
@@ -123,6 +129,7 @@ export interface GTMBrief {
     inferred: string[];
   };
   generationNotes?: string[];
+  systemRun?: SystemRunStep[];
 }
 
 export interface GenerateResponse {

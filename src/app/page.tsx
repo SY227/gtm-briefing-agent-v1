@@ -117,8 +117,8 @@ export default function Page() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <section className="mx-auto max-w-5xl px-4 pb-6 pt-10 sm:px-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Competitive Intelligence / GTM Briefing Agent</p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">Institutional-grade source governance for competitive intelligence memos.</h1>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Agentic Market Intelligence System</p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">Multi-stage, source-audited competitive intelligence agent for GTM and strategy teams.</h1>
       </section>
 
       <section className="mx-auto max-w-5xl px-4 sm:px-6">
@@ -159,9 +159,11 @@ export default function Page() {
             </div>
           )}
 
-          <button onClick={() => setGovernanceOpen((s) => !s)} className="mt-4 text-sm font-medium text-blue-700 hover:underline">{governanceOpen ? "Hide source governance panel" : "Show source governance panel"}</button>
-          {governanceOpen && input.governance && (
-            <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          {advanced && (
+            <>
+              <button onClick={() => setGovernanceOpen((s) => !s)} className="mt-4 text-sm font-medium text-blue-700 hover:underline">{governanceOpen ? "Hide source governance panel" : "Show source governance panel"}</button>
+              {governanceOpen && input.governance && (
+                <div className="mt-4 space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-sm font-semibold text-slate-800">Source governance</p>
               <div className="grid gap-2 sm:grid-cols-2 text-sm">
                 {[
@@ -197,6 +199,8 @@ export default function Page() {
                 <label>Filings weight: {input.governance.weights.filings.toFixed(2)}<input type="range" min={0} max={1.5} step={0.05} value={input.governance.weights.filings} onChange={(e) => setInput((s) => ({ ...s, governance: { ...s.governance!, weights: { ...s.governance!.weights, filings: Number(e.target.value) } } }))} className="w-full" /></label>
               </div>
             </div>
+              )}
+            </>
           )}
 
           <div className="mt-5 flex flex-wrap gap-3">
