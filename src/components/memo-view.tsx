@@ -13,12 +13,12 @@ function Copy({ text }: { text: string }) {
   );
 }
 
-function EvidenceList({ items }: { items: { claim: string; sourceUrl?: string; observedDate?: string; dateConfidence: string }[] }) {
+function EvidenceList({ items }: { items: { claim: string; sourceId?: string; sourceUrl?: string; observedDate?: string; dateConfidence: string }[] }) {
   return (
     <ul className="space-y-3 text-[15px] leading-7 text-slate-700">
       {items.map((item, idx) => (
         <li key={idx}>
-          <p>{item.claim}</p>
+          <p>{item.claim}{item.sourceId ? ` [${item.sourceId}]` : ""}</p>
           <p className="mt-1 text-xs text-slate-500">
             {item.observedDate ? `Date: ${item.observedDate}` : "Date: not confirmed"} · Confidence: {item.dateConfidence}
             {item.sourceUrl ? (
@@ -50,6 +50,14 @@ export function MemoView({ brief }: { brief: GTMBrief }) {
         <h2 className="mt-4 text-2xl font-semibold tracking-tight text-slate-900">{brief.company} Competitive Intelligence Memo</h2>
         <p className="mt-1 text-sm text-slate-600">Objective: {brief.objective} · Audience: {brief.audience}</p>
         {brief.competitors.length > 0 && <p className="mt-1 text-sm text-slate-600">Competitors: {brief.competitors.join(", ")}</p>}
+        {brief.companyProfile && (
+          <p className="mt-1 text-sm text-slate-600">
+            Canonical: {brief.companyProfile.canonicalName}
+            {brief.companyProfile.ticker ? ` · Ticker: ${brief.companyProfile.ticker}` : ""}
+            {brief.companyProfile.sector ? ` · Sector: ${brief.companyProfile.sector}` : ""}
+            {brief.companyProfile.region ? ` · Region: ${brief.companyProfile.region}` : ""}
+          </p>
+        )}
       </div>
 
       <section className="space-y-8">
@@ -114,9 +122,9 @@ export function MemoView({ brief }: { brief: GTMBrief }) {
           <ul className="space-y-2 text-sm text-slate-700">
             {brief.sources.map((source, idx) => (
               <li key={`${source.url}-${idx}`} className="rounded-lg border border-slate-200 px-3 py-2">
-                <div className="font-medium text-slate-900">{source.title}</div>
+                <div className="font-medium text-slate-900">{source.sourceId ? `[${source.sourceId}] ` : ""}{source.title}</div>
                 <a href={source.url} target="_blank" rel="noreferrer" className="break-all text-blue-700 hover:underline">{source.url}</a>
-                <p className="text-xs text-slate-500">{source.type} · fetched {new Date(source.fetchedAt).toLocaleString()} · {source.detectedDate ? `detected date ${source.detectedDate}` : "date not confirmed"}</p>
+                <p className="text-xs text-slate-500">{source.type}{source.tier ? ` · ${source.tier}` : ""} · fetched {new Date(source.fetchedAt).toLocaleString()} · {source.detectedDate ? `detected date ${source.detectedDate}` : "date not confirmed"}</p>
               </li>
             ))}
           </ul>
@@ -127,6 +135,16 @@ export function MemoView({ brief }: { brief: GTMBrief }) {
           <p className="text-[15px] leading-7 text-slate-700"><strong>Confidence:</strong> {brief.confidenceCoverage.confidence}</p>
           <p className="text-[15px] leading-7 text-slate-700">{brief.confidenceCoverage.evidenceQuality}</p>
           <p className="mt-2 text-[15px] leading-7 text-slate-700"><strong>Freshness summary:</strong> {brief.freshness.summary}</p>
+          {brief.confidenceBreakdown && (
+            <p className="text-[15px] leading-7 text-slate-700">
+              <strong>Confidence breakdown:</strong> Coverage {brief.confidenceBreakdown.coverage} · Recency {brief.confidenceBreakdown.recency} · Source quality {brief.confidenceBreakdown.sourceQuality}
+            </p>
+          )}
+          {brief.sourceTierSummary && (
+            <p className="text-[15px] leading-7 text-slate-700">
+              <strong>Source tiers:</strong> Tier 1: {brief.sourceTierSummary.tier1}, Tier 2: {brief.sourceTierSummary.tier2}, Tier 3: {brief.sourceTierSummary.tier3}
+            </p>
+          )}
           <ul className="mt-2 list-disc pl-5 text-[15px] leading-7 text-slate-700">{brief.confidenceCoverage.knownGaps.map((g, i) => <li key={i}>{g}</li>)}</ul>
           <p className="mt-2 text-[15px] leading-7 text-slate-700"><strong>Observed:</strong> {brief.observedVsInferred.observed.join("; ") || "n/a"}</p>
           <p className="text-[15px] leading-7 text-slate-700"><strong>Inferred:</strong> {brief.observedVsInferred.inferred.join("; ") || "n/a"}</p>

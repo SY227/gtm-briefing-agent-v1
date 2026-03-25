@@ -40,9 +40,11 @@ export interface BriefInput {
 export type SourceType = "user-provided" | "company-site" | "competitor-site" | "public-page";
 
 export interface SourceItem {
+  sourceId?: string;
   title: string;
   url: string;
   type: SourceType;
+  tier?: "Tier 1" | "Tier 2" | "Tier 3";
   fetchedAt: string;
   detectedDate?: string;
   note?: string;
@@ -50,6 +52,7 @@ export interface SourceItem {
 
 export interface EvidenceLine {
   claim: string;
+  sourceId?: string;
   sourceUrl?: string;
   observedDate?: string;
   dateConfidence: "high" | "medium" | "low";
@@ -97,6 +100,22 @@ export interface GTMBrief {
     confidence: "Low" | "Medium" | "High";
     evidenceQuality: string;
     knownGaps: string[];
+  };
+  confidenceBreakdown?: {
+    coverage: "Low" | "Medium" | "High";
+    recency: "Low" | "Medium" | "High";
+    sourceQuality: "Low" | "Medium" | "High";
+  };
+  sourceTierSummary?: {
+    tier1: number;
+    tier2: number;
+    tier3: number;
+  };
+  companyProfile?: {
+    canonicalName: string;
+    ticker?: string;
+    sector?: string;
+    region?: string;
   };
   sources: SourceItem[];
   observedVsInferred: {

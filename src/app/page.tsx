@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MemoView } from "@/components/memo-view";
 import { BriefInput, GTMBrief, GenerateResponse, QuickMode } from "@/lib/types";
 
@@ -48,6 +48,12 @@ export default function Page() {
   const [progress, setProgress] = useState<string[]>([]);
   const [notices, setNotices] = useState<string[]>([]);
   const [brief, setBrief] = useState<GTMBrief | null>(null);
+  const [history, setHistory] = useState<GTMBrief[]>([]);
+
+  useEffect(() => {
+    const raw = localStorage.getItem("ci-brief-history-v2");
+    if (raw) setHistory(JSON.parse(raw));
+  }, []);
 
   const canGenerate = useMemo(() => input.primaryCompany.trim().length > 1, [input.primaryCompany]);
 
@@ -70,8 +76,20 @@ export default function Page() {
       });
       const data = (await res.json()) as GenerateResponse;
       setBrief(data.brief);
-      setNotices(data.notices || []);
+
+      const previous = history.find((h) => h.company.toLowerCase() === data.brief.company.toLowerCase());
+      const deltaNotice = previous
+        ? `Since last run (${new Date(previous.asOf).toLocaleDateString()}): what-changed signals ${previous.whatChanged.length} → ${data.brief.whatChanged.length}.`
+        : undefined;
+
+      const nextNotices = [...(data.notices || []), ...(deltaNotice ? [deltaNotice] : [])];
+      setNotices(nextNotices);
       if (data.generationError) setNotices((n) => [...n, `Generation issue: ${data.generationError}`]);
+
+      const nextHistory = [data.brief, ...history.filter((h) => h.id !== data.brief.id)].slice(0, 20);
+      setHistory(nextHistory);
+      localStorage.setItem("ci-brief-history-v2", JSON.stringify(nextHistory));
+
       setProgress(["Memo ready"]);
     } catch {
       setNotices(["Request failed before server processing. Please retry."]);

@@ -74,6 +74,12 @@ function classifyUrl(url: string): ProbeTarget["class"] {
   return "general";
 }
 
+function tierFromClass(sourceClass: ProbeTarget["class"]): SourceItem["tier"] {
+  if (sourceClass === "official" || sourceClass === "filing") return "Tier 1";
+  if (sourceClass === "news" || sourceClass === "analyst") return "Tier 2";
+  return "Tier 3";
+}
+
 function classWeight(sourceClass: ProbeTarget["class"], governance: SourceGovernance) {
   if (sourceClass === "official") return governance.weights.official;
   if (sourceClass === "news") return governance.weights.news;
@@ -186,6 +192,7 @@ async function fetchEvidence(target: ProbeTarget) {
         title: target.title || `Public page: ${new URL(target.url).hostname}`,
         url: target.url,
         type: target.type,
+        tier: tierFromClass(target.class),
         fetchedAt: new Date().toISOString(),
         detectedDate,
         note: `class=${target.class}; weight=${target.weight.toFixed(2)}`,
@@ -259,6 +266,37 @@ async function buildProbeUrls(input: BriefInput, governance: SourceGovernance) {
     .slice(0, Math.max(10, Math.min(80, governance.maxSearchResults)));
 }
 
+function summarizeSourceTiers(sources: SourceItem[]) {
+  return {
+    tier1: sources.filter((s) => s.tier === "Tier 1").length,
+    tier2: sources.filter((s) => s.tier === "Tier 2").length,
+    tier3: sources.filter((s) => s.tier === "Tier 3").length,
+  };
+}
+
+function toBand(score: number): "Low" | "Medium" | "High" {
+  if (score >= 0.7) return "High";
+  if (score >= 0.4) return "Medium";
+  return "Low";
+}
+
+function confidenceBreakdownFromEvidence(sources: SourceItem[], freshness: { status: "current" | "mixed" | "stale" }) {
+  const tier = summarizeSourceTiers(sources);
+  const total = Math.max(1, sources.length);
+  const coverageScore = Math.min(1, total / 16);
+  const recencyScore = freshness.status === "current" ? 1 : freshness.status === "mixed" ? 0.55 : 0.2;
+  const qualityScore = Math.min(1, (tier.tier1 * 1 + tier.tier2 * 0.6 + tier.tier3 * 0.25) / Math.max(1, total));
+
+  return {
+    sourceTierSummary: tier,
+    confidenceBreakdown: {
+      coverage: toBand(coverageScore),
+      recency: toBand(recencyScore),
+      sourceQuality: toBand(qualityScore),
+    },
+  };
+}
+
 function makeErrorBrief(input: BriefInput, reason: string): GTMBrief {
   return {
     id: `error-${Date.now()}`,
@@ -292,6 +330,15 @@ function makeErrorBrief(input: BriefInput, reason: string): GTMBrief {
       evidenceQuality: "Generation failure; no reliable synthesis produced.",
       knownGaps: [reason],
     },
+    confidenceBreakdown: {
+      coverage: "Low",
+      recency: "Low",
+      sourceQuality: "Low",
+    },
+    sourceTierSummary: { tier1: 0, tier2: 0, tier3: 0 },
+    companyProfile: {
+      canonicalName: input.primaryCompany || "Unknown company",
+    },
     sources: [],
     observedVsInferred: { observed: [], inferred: [] },
     generationNotes: [reason],
@@ -311,8 +358,9 @@ export async function POST(req: Request) {
   governance.weights = { ...defaultGovernance.weights, ...(input.governance?.weights || {}) };
 
   const probePlan = await buildProbeUrls(input, governance);
-  const fetched = (await Promise.all(probePlan.map((t) => fetchEvidence(t)))).filter(Boolean) as { source: SourceItem; text: string }[];
-  const sources = fetched.map((f) => f.source);
+  const fetchedRaw = (await Promise.all(probePlan.map((t) => fetchEvidence(t)))).filter(Boolean) as { source: SourceItem; text: string }[];
+  const sources = fetchedRaw.map((f, i) => ({ ...f.source, sourceId: `S${i + 1}` }));
+  const fetched = fetchedRaw.map((f, i) => ({ ...f, source: { ...f.source, sourceId: `S${i + 1}` } }));
   const freshness = freshnessFromSources(sources);
 
   const notices: string[] = [];
@@ -340,9 +388,9 @@ SourceCount: ${sources.length}`;
   const synthesisPrompt = `Create strict JSON only with schema:
 {
 "executiveSummary": string,
-"latestVerifiedSignals": [{"claim": string, "sourceUrl": string, "observedDate": string, "dateConfidence": "high"|"medium"|"low"}],
-"whatChanged": [{"claim": string, "sourceUrl": string, "observedDate": string, "dateConfidence": "high"|"medium"|"low"}],
-"productPricingSignals": [{"claim": string, "sourceUrl": string, "observedDate": string, "dateConfidence": "high"|"medium"|"low"}],
+"latestVerifiedSignals": [{"claim": string, "sourceId": string, "sourceUrl": string, "observedDate": string, "dateConfidence": "high"|"medium"|"low"}],
+"whatChanged": [{"claim": string, "sourceId": string, "sourceUrl": string, "observedDate": string, "dateConfidence": "high"|"medium"|"low"}],
+"productPricingSignals": [{"claim": string, "sourceId": string, "sourceUrl": string, "observedDate": string, "dateConfidence": "high"|"medium"|"low"}],
 "likelyICP": string[],
 "messagingPositioning": string[],
 "risks": string[],
@@ -350,11 +398,13 @@ SourceCount: ${sources.length}`;
 "battlecard": {"strengths": string[],"weaknesses": string[],"likelyObjections": string[],"responseAngles": string[],"say": string[],"avoid": string[]},
 "recommendedActions": {"sales": string[],"strategy": string[],"leadership": string[]},
 "observedVsInferred": {"observed": string[], "inferred": string[]},
-"confidenceCoverage": {"confidence": "Low"|"Medium"|"High", "evidenceQuality": string, "knownGaps": string[]}
+"confidenceCoverage": {"confidence": "Low"|"Medium"|"High", "evidenceQuality": string, "knownGaps": string[]},
+"companyProfile": {"canonicalName": string, "ticker": string, "sector": string, "region": string}
 }
 Rules:
 - Never fabricate dated events.
 - For recency-sensitive claims, include observedDate or "date not confirmed".
+- Use valid sourceId values from provided evidence where possible (e.g., S1, S2).
 - If evidence is stale/mixed, be explicit.
 - Keep analyst-grade tone and concise business language.
 Context:
@@ -362,6 +412,7 @@ Input=${JSON.stringify(input)}
 Planner=${plannerText}
 Freshness=${JSON.stringify(freshness)}
 Governance=${JSON.stringify(governance)}
+SourceIds=${sources.map((s) => s.sourceId).join(",")}
 Evidence=${JSON.stringify(evidencePayload).slice(0, 26000)}
 `;
 
@@ -377,6 +428,8 @@ Evidence=${JSON.stringify(evidencePayload).slice(0, 26000)}
       value: unknown,
       fallback: { claim: string; observedDate: string; dateConfidence: "low"; sourceUrl?: string }[],
     ) => (Array.isArray(value) && value.length > 0 ? value : fallback);
+
+    const { sourceTierSummary, confidenceBreakdown } = confidenceBreakdownFromEvidence(sources, freshness);
 
     const brief: GTMBrief = {
       id: `live-${Date.now()}`,
@@ -409,6 +462,11 @@ Evidence=${JSON.stringify(evidencePayload).slice(0, 26000)}
         confidence: freshness.status === "current" ? "Medium" : "Low",
         evidenceQuality: freshness.summary,
         knownGaps: ["Model returned partial confidence metadata."],
+      },
+      confidenceBreakdown,
+      sourceTierSummary,
+      companyProfile: parsed.companyProfile || {
+        canonicalName: input.primaryCompany,
       },
       sources,
       generationNotes: notices,
