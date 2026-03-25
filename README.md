@@ -8,7 +8,7 @@ A Vercel-ready, single-page competitive intelligence memo generator for founders
 - Explicit generation states
 - Executive-style memo output (not dashboard cards)
 - Date-sensitive evidence handling with freshness audit
-- Clear mode labeling: **live**, **sample demo**, or **error fallback**
+- Clear mode labeling: **live** or **error fallback** (no synthetic demo report)
 
 ## Stack
 - Next.js App Router + TypeScript
@@ -38,25 +38,31 @@ Open `http://localhost:3000`.
 Required for live generation:
 - `GEMINI_API_KEY`
 
-If missing, the app stays operational in explicitly labeled **sample demo** mode.
+If missing, the API returns an explicit `error-fallback` memo with clear failure notes (no fake/demo narrative).
 
-## Live vs demo vs fallback
+## Live vs fallback
 - **Live mode**: Gemini + evidence pipeline executed successfully.
-- **Demo mode**: key missing; sample memo is shown and clearly labeled.
-- **Error fallback**: key exists but generation fails; output is clearly labeled with failure notice.
+- **Error fallback mode**: key missing or generation failed; response is explicit and marked incomplete.
 
 ## Evidence + freshness framework
-The backend pipeline:
+Backend pipeline:
 1. Intake normalization
-2. Evidence collection (trusted URLs first, then company/competitor public pages such as `/pricing`, `/product`, `/docs`, `/blog`, `/news`, `/press`)
-3. Freshness audit (detected dates + recency status)
-4. Synthesis (observed vs inferred separation)
-5. Presentation formatting
+2. Search stage across public web/news feeds
+   - Bing Web RSS
+   - Bing News RSS
+   - Google News RSS
+3. Evidence collection
+   - trusted URLs first
+   - official company/competitor sites (+ practical path probing)
+   - search-derived public pages
+4. Freshness audit (detected dates + recency status)
+5. Synthesis (observed vs inferred separation)
+6. Presentation formatting
 
 Freshness logic:
 - If no explicit dates are detected, freshness is marked **stale/limited**.
 - If freshest evidence is older than 90 days, recency-sensitive claims are constrained.
-- "What Changed Recently" and pricing sections are required to include date context or "date not confirmed".
+- "What Changed Recently" and pricing sections include date context or "date not confirmed".
 
 ## Route structure
 - `/` main operational experience
@@ -69,6 +75,6 @@ Freshness logic:
 4. Deploy
 
 ## Known limitations
-- v1 uses public page probing, not broad search indexing.
+- Search breadth depends on publicly accessible RSS/search results and site accessibility.
 - Some sites do not expose explicit update dates; those claims are marked with low date confidence.
 - No database in v1 (intentional for simple deployability).

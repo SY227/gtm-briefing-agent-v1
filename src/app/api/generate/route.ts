@@ -1,33 +1,18 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-import { sampleBriefs } from "@/lib/sample-data";
 import { BriefInput, GTMBrief, GenerateResponse, SourceItem } from "@/lib/types";
 
 export const runtime = "nodejs";
 const model = "gemini-2.5-flash-lite";
 
-const pathHints = ["", "/pricing", "/product", "/products", "/docs", "/blog", "/news", "/press", "/investor-relations", "/updates"];
+const pathHints = ["", "/pricing", "/product", "/products", "/docs", "/blog", "/news", "/press", "/investor-relations", "/updates", "/announcements"];
 
-async function webSearchUrls(query: string, limit = 6) {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 7000);
-    const rssUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}&format=rss`;
-    const res = await fetch(rssUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 GTMBriefingAgent/1.2" },
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (!res.ok) return [];
-    const xml = await res.text();
-    const links = [...xml.matchAll(/<link>(https?:\/\/[^<]+)<\/link>/g)].map((m) => m[1]);
-    return links
-      .filter((u) => !u.includes("bing.com") && !u.includes("microsoft.com/en-us/bing"))
-      .slice(0, limit);
-  } catch {
-    return [];
-  }
-}
+type ProbeTarget = {
+  url: string;
+  type: SourceItem["type"];
+  title?: string;
+  detectedDate?: string;
+};
 
 function normalizeUrl(raw: string) {
   const value = raw.trim();
@@ -45,6 +30,19 @@ function baseOrigin(url: string) {
   }
 }
 
+function inferDomainsFromName(name: string) {
+  const token = name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .join("");
+
+  if (!token) return [];
+  return [`https://www.${token}.com`, `https://${token}.com`, `https://corporate.${token}.com`];
+}
+
 function extractDate(text: string): string | undefined {
   const iso = text.match(/\b(20\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b/);
   if (iso) return iso[0];
@@ -60,27 +58,81 @@ function safeTextFromHtml(html: string) {
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 5000);
+    .slice(0, 5500);
 }
 
-async function fetchEvidence(url: string, type: SourceItem["type"]) {
+async function fetchWithTimeout(url: string, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 7000);
-    const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 GTMBriefingAgent/1.1" },
+    return await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 GTMBriefingAgent/2.0" },
       signal: controller.signal,
     });
+  } finally {
     clearTimeout(timeout);
+  }
+}
+
+async function searchRss(rssUrl: string) {
+  try {
+    const res = await fetchWithTimeout(rssUrl, 7000);
+    if (!res.ok) return [] as ProbeTarget[];
+    const xml = await res.text();
+    const items = [...xml.matchAll(/<item>[\s\S]*?<\/item>/g)].map((m) => m[0]);
+    return items
+      .map((item) => {
+        const link = item.match(/<link>(https?:\/\/[^<]+)<\/link>/)?.[1];
+        const title = item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/)?.[1] || item.match(/<title>(.*?)<\/title>/)?.[1];
+        const pubDate = item.match(/<pubDate>(.*?)<\/pubDate>/)?.[1];
+        if (!link) return null;
+        return {
+          url: link,
+          type: "public-page" as const,
+          title: title?.trim(),
+          detectedDate: pubDate,
+        };
+      })
+      .filter(Boolean) as ProbeTarget[];
+  } catch {
+    return [] as ProbeTarget[];
+  }
+}
+
+async function webSearchTargets(input: BriefInput) {
+  const company = input.primaryCompany.trim();
+  const competitors = input.competitors.join(" OR ");
+
+  const queries = [
+    `${company} latest news`,
+    `${company} pricing update`,
+    `${company} product launch`,
+    `${company} investor relations press release`,
+    competitors ? `(${company}) (${competitors}) competitive analysis latest` : `${company} competitors latest`,
+  ];
+
+  const providers = queries.flatMap((q) => [
+    `https://www.bing.com/search?q=${encodeURIComponent(q)}&format=rss`,
+    `https://www.bing.com/news/search?q=${encodeURIComponent(q)}&format=rss`,
+    `https://news.google.com/rss/search?q=${encodeURIComponent(q)}`,
+  ]);
+
+  const results = await Promise.all(providers.map(searchRss));
+  return results.flat().slice(0, 40);
+}
+
+async function fetchEvidence(target: ProbeTarget) {
+  try {
+    const res = await fetchWithTimeout(target.url);
     if (!res.ok) return null;
     const html = await res.text();
     const text = safeTextFromHtml(html);
-    const detectedDate = extractDate(`${html}\n${text}`);
+    const detectedDate = extractDate(`${html}\n${text}`) || target.detectedDate;
     return {
       source: {
-        title: `Public page: ${new URL(url).hostname}`,
-        url,
-        type,
+        title: target.title || `Public page: ${new URL(target.url).hostname}`,
+        url: target.url,
+        type: target.type,
         fetchedAt: new Date().toISOString(),
         detectedDate,
       } as SourceItem,
@@ -94,8 +146,7 @@ async function fetchEvidence(url: string, type: SourceItem["type"]) {
 function parseDateToEpoch(value?: string): number | undefined {
   if (!value) return undefined;
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return undefined;
-  return d.getTime();
+  return Number.isNaN(d.getTime()) ? undefined : d.getTime();
 }
 
 function freshnessFromSources(sources: SourceItem[]) {
@@ -106,111 +157,85 @@ function freshnessFromSources(sources: SourceItem[]) {
       freshestEvidenceDate: undefined,
       daysSinceFreshest: undefined,
       status: "stale" as const,
-      summary: "No explicit dated evidence detected. Recency-sensitive claims should be treated as limited.",
+      summary: "No explicit dated evidence detected across fetched sources. Recency-sensitive claims are constrained.",
     };
   }
   const freshest = Math.max(...epochs);
   const days = Math.floor((now - freshest) / (1000 * 60 * 60 * 24));
   if (days <= 90) {
-    return {
-      freshestEvidenceDate: new Date(freshest).toISOString(),
-      daysSinceFreshest: days,
-      status: "current" as const,
-      summary: `Freshest dated evidence is ${days} days old.`,
-    };
+    return { freshestEvidenceDate: new Date(freshest).toISOString(), daysSinceFreshest: days, status: "current" as const, summary: `Freshest dated evidence is ${days} days old.` };
   }
   if (days <= 180) {
-    return {
-      freshestEvidenceDate: new Date(freshest).toISOString(),
-      daysSinceFreshest: days,
-      status: "mixed" as const,
-      summary: `Freshest dated evidence is ${days} days old; recent-change claims should be conservative.`,
-    };
+    return { freshestEvidenceDate: new Date(freshest).toISOString(), daysSinceFreshest: days, status: "mixed" as const, summary: `Freshest dated evidence is ${days} days old; recency confidence is moderate.` };
   }
-  return {
-    freshestEvidenceDate: new Date(freshest).toISOString(),
-    daysSinceFreshest: days,
-    status: "stale" as const,
-    summary: `Freshest dated evidence is ${days} days old; avoid confident recent-change claims.`,
-  };
-}
-
-function inferDomainsFromName(name: string) {
-  const token = name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .join("");
-
-  if (!token) return [];
-
-  return [
-    `https://www.${token}.com`,
-    `https://${token}.com`,
-    `https://corporate.${token}.com`,
-  ];
+  return { freshestEvidenceDate: new Date(freshest).toISOString(), daysSinceFreshest: days, status: "stale" as const, summary: `Freshest dated evidence is ${days} days old; avoid confident recent-change claims.` };
 }
 
 async function buildProbeUrls(input: BriefInput) {
-  const urls: { url: string; type: SourceItem["type"] }[] = [];
-  const pushUnique = (url: string, type: SourceItem["type"]) => {
-    if (!url) return;
-    const normalized = normalizeUrl(url);
+  const urls: ProbeTarget[] = [];
+  const pushUnique = (target: ProbeTarget) => {
+    const normalized = normalizeUrl(target.url);
     if (!normalized) return;
     if (urls.find((u) => u.url === normalized)) return;
-    urls.push({ url: normalized, type });
+    urls.push({ ...target, url: normalized });
   };
 
-  (input.trustedUrls || []).slice(0, 8).forEach((url) => pushUnique(url, "user-provided"));
+  (input.trustedUrls || []).slice(0, 12).forEach((url) => pushUnique({ url, type: "user-provided", title: "Trusted URL" }));
 
-  const explicitCompanyOrigins = [input.companyWebsite, ...inferDomainsFromName(input.primaryCompany)]
+  const companyOrigins = [input.companyWebsite, ...inferDomainsFromName(input.primaryCompany)]
     .filter(Boolean)
     .map((u) => baseOrigin(u as string))
     .filter(Boolean);
-  explicitCompanyOrigins.forEach((origin) => pathHints.forEach((p) => pushUnique(`${origin}${p}`, "company-site")));
+  companyOrigins.forEach((origin) => pathHints.forEach((p) => pushUnique({ url: `${origin}${p}`, type: "company-site" })));
 
-  const explicitCompetitorSites = [
-    ...(input.competitorWebsites || []),
-    ...input.competitors.flatMap(inferDomainsFromName),
-  ];
-  explicitCompetitorSites.slice(0, 8).forEach((site) => {
+  const competitorSites = [...(input.competitorWebsites || []), ...input.competitors.flatMap(inferDomainsFromName)];
+  competitorSites.slice(0, 10).forEach((site) => {
     const origin = baseOrigin(site);
-    if (origin) pathHints.forEach((p) => pushUnique(`${origin}${p}`, "competitor-site"));
+    if (origin) pathHints.forEach((p) => pushUnique({ url: `${origin}${p}`, type: "competitor-site" }));
   });
 
-  const searchQueries = [
-    `${input.primaryCompany} official site pricing news`,
-    `${input.primaryCompany} product updates press release`,
-    ...input.competitors.map((c) => `${c} official site pricing product updates`),
-  ].slice(0, 6);
+  const searchTargets = await webSearchTargets(input);
+  searchTargets.forEach((t) => pushUnique(t));
 
-  const searchResults = await Promise.all(searchQueries.map((q) => webSearchUrls(q, 3)));
-  searchResults.flat().forEach((url) => pushUnique(url, "public-page"));
-
-  return urls.slice(0, 48);
+  return urls.slice(0, 60);
 }
 
-function demoResponse(input: BriefInput, mode: GTMBrief["mode"], note: string): GenerateResponse {
-  const base = sampleBriefs[0];
-  const brief: GTMBrief = {
-    ...base,
-    id: `${mode}-${Date.now()}`,
+function makeErrorBrief(input: BriefInput, reason: string): GTMBrief {
+  return {
+    id: `error-${Date.now()}`,
     createdAt: new Date().toISOString(),
     asOf: new Date().toISOString(),
-    mode,
-    company: input.primaryCompany || base.company,
-    competitors: input.competitors.length ? input.competitors : base.competitors,
-    objective: input.objective || base.objective,
-    audience: input.audience || base.audience,
-    generationNotes: [...(base.generationNotes || []), note],
-  };
-
-  return {
-    brief,
-    notices: [note],
-    generationError: mode === "error-fallback" ? note : undefined,
+    mode: "error-fallback",
+    company: input.primaryCompany || "Unknown company",
+    competitors: input.competitors || [],
+    objective: input.objective || "Not provided",
+    audience: input.audience || "Not provided",
+    executiveSummary: "Live generation failed before a reliable memo could be produced.",
+    latestVerifiedSignals: [{ claim: "No validated signal available due to generation failure.", observedDate: "date not confirmed", dateConfidence: "low" }],
+    whatChanged: [{ claim: "Unable to verify recent changes.", observedDate: "date not confirmed", dateConfidence: "low" }],
+    productPricingSignals: [{ claim: "Unable to verify product/pricing changes.", observedDate: "date not confirmed", dateConfidence: "low" }],
+    likelyICP: [],
+    messagingPositioning: [],
+    risks: ["Generation pipeline failed."],
+    opportunities: [],
+    battlecard: { strengths: [], weaknesses: [], likelyObjections: [], responseAngles: [], say: [], avoid: [] },
+    recommendedActions: {
+      sales: ["Retry with company and competitor official URLs."],
+      strategy: ["Retry with trusted press/news pages."],
+      leadership: ["Treat this run as incomplete."],
+    },
+    freshness: {
+      status: "stale",
+      summary: "No usable evidence due to pipeline failure.",
+    },
+    confidenceCoverage: {
+      confidence: "Low",
+      evidenceQuality: "Generation failure; no reliable synthesis produced.",
+      knownGaps: [reason],
+    },
+    sources: [],
+    observedVsInferred: { observed: [], inferred: [] },
+    generationNotes: [reason],
   };
 }
 
@@ -218,16 +243,17 @@ export async function POST(req: Request) {
   const input = (await req.json()) as BriefInput;
 
   if (!process.env.GEMINI_API_KEY) {
-    return NextResponse.json(demoResponse(input, "demo", "Live mode unavailable: GEMINI_API_KEY is not configured."));
+    const reason = "Live mode unavailable: GEMINI_API_KEY is not configured.";
+    return NextResponse.json({ brief: makeErrorBrief(input, reason), notices: [reason], generationError: reason } satisfies GenerateResponse);
   }
 
   const probePlan = await buildProbeUrls(input);
-  const fetched = (await Promise.all(probePlan.map((u) => fetchEvidence(u.url, u.type)))).filter(Boolean) as { source: SourceItem; text: string }[];
+  const fetched = (await Promise.all(probePlan.map((t) => fetchEvidence(t)))).filter(Boolean) as { source: SourceItem; text: string }[];
   const sources = fetched.map((f) => f.source);
   const freshness = freshnessFromSources(sources);
 
   const notices: string[] = [];
-  if (sources.length === 0) notices.push("No evidence pages were reachable from provided or inferred domains. Add company/competitor websites or trusted URLs for stronger recency coverage.");
+  if (sources.length === 0) notices.push("No evidence pages were reachable from public search and provided inputs. Add official company/competitor URLs.");
   if (freshness.status !== "current") notices.push(`Freshness status is ${freshness.status}. ${freshness.summary}`);
 
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -242,7 +268,7 @@ SourceCount: ${sources.length}`;
     const plan = await ai.models.generateContent({ model, contents: plannerPrompt, config: { temperature: 0.1, responseMimeType: "application/json" } });
     plannerText = plan.text || "{}";
   } catch {
-    notices.push("Planner stage partially failed; proceeding with synthesis.");
+    notices.push("Planner stage failed; synthesis continued.");
   }
 
   const evidencePayload = fetched.map((f) => ({ source: f.source, excerpt: f.text.slice(0, 1800) }));
@@ -264,14 +290,14 @@ SourceCount: ${sources.length}`;
 }
 Rules:
 - Never fabricate dated events.
-- Recency-sensitive sections must include observedDate or "date not confirmed".
-- If freshness is stale/mixed, state limits directly.
-- Separate observed evidence from inferred conclusions.
+- For recency-sensitive claims, include observedDate or "date not confirmed".
+- If evidence is stale/mixed, be explicit.
+- Keep analyst-grade tone and concise business language.
 Context:
 Input=${JSON.stringify(input)}
 Planner=${plannerText}
 Freshness=${JSON.stringify(freshness)}
-Evidence=${JSON.stringify(evidencePayload).slice(0, 18000)}
+Evidence=${JSON.stringify(evidencePayload).slice(0, 26000)}
 `;
 
   try {
@@ -317,22 +343,20 @@ Evidence=${JSON.stringify(evidencePayload).slice(0, 18000)}
       confidenceCoverage: parsed.confidenceCoverage || {
         confidence: freshness.status === "current" ? "Medium" : "Low",
         evidenceQuality: freshness.summary,
-        knownGaps: ["Model did not return full confidence metadata."],
+        knownGaps: ["Model returned partial confidence metadata."],
       },
       sources,
       generationNotes: notices,
     };
 
     if (freshness.status !== "current") {
-      brief.confidenceCoverage.knownGaps = [
-        ...brief.confidenceCoverage.knownGaps,
-        `Freshness is ${freshness.status}; recent-change claims should be treated as constrained.`,
-      ];
+      brief.confidenceCoverage.knownGaps = [...brief.confidenceCoverage.knownGaps, `Freshness is ${freshness.status}; recency-sensitive claims are constrained.`];
     }
 
     return NextResponse.json({ brief, notices } satisfies GenerateResponse);
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Unknown synthesis error";
-    return NextResponse.json(demoResponse(input, "error-fallback", `Live generation failed: ${msg}`));
+    const reason = `Live generation failed: ${msg}`;
+    return NextResponse.json({ brief: makeErrorBrief(input, reason), notices: [reason], generationError: reason } satisfies GenerateResponse);
   }
 }

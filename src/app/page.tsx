@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { MemoView } from "@/components/memo-view";
-import { sampleBriefs } from "@/lib/sample-data";
 import { BriefInput, GTMBrief, GenerateResponse, QuickMode } from "@/lib/types";
 
 const modes: QuickMode[] = [
@@ -29,7 +28,7 @@ export default function Page() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<string[]>([]);
   const [notices, setNotices] = useState<string[]>([]);
-  const [brief, setBrief] = useState<GTMBrief | null>(sampleBriefs[0]);
+  const [brief, setBrief] = useState<GTMBrief | null>(null);
 
   const canGenerate = useMemo(() => input.primaryCompany.trim().length > 1, [input.primaryCompany]);
 
@@ -38,7 +37,8 @@ export default function Page() {
     setNotices([]);
     setProgress([
       "Normalizing request",
-      "Collecting source evidence",
+      "Searching latest public sources",
+      "Collecting evidence from company, competitor, and news pages",
       "Auditing freshness",
       "Synthesizing memo",
     ]);
@@ -54,9 +54,8 @@ export default function Page() {
       if (data.generationError) setNotices((n) => [...n, `Generation issue: ${data.generationError}`]);
       setProgress(["Memo ready"]);
     } catch {
-      setNotices(["Generation request failed before server processing. Showing sample demo report."]);
-      setBrief({ ...sampleBriefs[1], id: `sample-${Date.now()}` });
-      setProgress(["Request failed: sample demo loaded"]);
+      setNotices(["Request failed before server processing. Please retry."]);
+      setProgress(["Request failed"]);
     } finally {
       setLoading(false);
     }
@@ -67,7 +66,7 @@ export default function Page() {
       <section className="mx-auto max-w-5xl px-4 pb-6 pt-10 sm:px-6">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Competitive Intelligence / GTM Briefing Agent</p>
         <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">Source-backed strategy memo generation for operators and GTM leaders.</h1>
-        <p className="mt-4 max-w-3xl text-lg leading-8 text-slate-600">Generate an executive-ready competitive briefing with explicit evidence, freshness checks, and confidence notes. Designed for practical sales, product, and strategy decisions.</p>
+        <p className="mt-4 max-w-3xl text-lg leading-8 text-slate-600">Generate an executive-ready competitive briefing using broad public web search + official sources, with explicit freshness checks and confidence notes.</p>
       </section>
 
       <section className="mx-auto max-w-5xl px-4 sm:px-6">
@@ -79,7 +78,7 @@ export default function Page() {
             </label>
             <label className="text-sm">
               <span className="mb-1 block font-medium">Objective / use case</span>
-              <input value={input.objective} onChange={(e) => setInput((s) => ({ ...s, objective: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Sales prep" />
+              <input value={input.objective} onChange={(e) => setInput((s) => ({ ...s, objective: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Sales prep / strategy review / investor memo" />
             </label>
           </div>
 
@@ -144,7 +143,6 @@ export default function Page() {
 
           <div className="mt-5 flex flex-wrap gap-3">
             <button disabled={loading || !canGenerate} onClick={runGenerate} className="rounded-xl bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">{loading ? "Generating memo..." : "Generate briefing memo"}</button>
-            <button onClick={() => setBrief(sampleBriefs[Math.floor(Math.random() * sampleBriefs.length)])} className="rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700">Load sample demo memo</button>
           </div>
 
           {(progress.length > 0 || notices.length > 0) && (
@@ -157,13 +155,13 @@ export default function Page() {
       </section>
 
       <section className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
-        {brief ? <MemoView brief={brief} /> : <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-600">Generate a memo to begin.</div>}
+        {brief ? <MemoView brief={brief} /> : <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-600">Run a company query to generate a live memo from current public sources.</div>}
       </section>
 
       <section className="mx-auto max-w-5xl px-4 pb-12 sm:px-6">
         <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
           <p className="font-medium text-slate-800">Methodology (compact)</p>
-          <p className="mt-1">The agent prioritizes user-provided URLs, then probes public company/competitor pages (homepage, product, pricing, docs, newsroom). It labels weak recency, separates observed vs inferred claims, and avoids certainty when evidence freshness is limited.</p>
+          <p className="mt-1">The agent searches broad public web/news sources, prioritizes trusted URLs, probes official company/competitor pages, audits evidence freshness, and separates observed evidence from inferred conclusions.</p>
         </div>
       </section>
     </main>
