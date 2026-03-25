@@ -46,17 +46,18 @@ If missing, the API returns an explicit `error-fallback` memo (no fake demo narr
 - **Error fallback**: generation failed or key missing; report clearly marked incomplete.
 
 ## Multi-stage pipeline
-1. Input normalization (including typo correction hints)
-2. Source discovery (public search + official pages)
-3. Evidence collection and source labeling
-4. Freshness audit and recency status
-5. Synthesis (observed vs inferred separation)
+1. Input normalization (including typo correction + alias handling for major public companies)
+2. Source discovery across public web/news feeds and official company sources
+3. Evidence collection with URL deduplication, metadata fallback, and source labeling
+4. Freshness audit using RSS dates + page metadata dates + extracted in-page dates
+5. Synthesis (observed vs inferred separation, current-news-aware memo grounding)
 6. Confidence formatting and memo presentation
 
 ## Freshness handling
-- If explicit dates are not detected, recency-sensitive claims are constrained.
+- Uses explicit dates from RSS pubDate/updated fields, article/page metadata, and common in-page date patterns.
 - If newest evidence is older than 90 days, output calls out reduced recency confidence.
 - “As of” timestamp and confidence notes are always shown.
+- Freshness is evaluated from the newest valid dated signal across all collected sources (not only official pages).
 
 ## Advanced controls (secondary)
 Source governance can be opened from advanced controls:
@@ -74,7 +75,12 @@ Source governance can be opened from advanced controls:
 2. Add `GEMINI_API_KEY` in project environment variables
 3. Deploy
 
+## Current-news coverage notes
+- News inclusion is strengthened via multiple public feeds (Bing News/Web RSS, Google News RSS, Yahoo Finance headlines when ticker is available).
+- Search/news results are deduplicated and ranked by trust, recency, and relevance before page probing.
+- If a fetched page blocks content, the system can still use dated RSS metadata as constrained evidence.
+
 ## Known limitations
 - Public-web search breadth depends on accessible RSS/search feeds and source availability.
-- Some pages do not expose reliable update dates.
+- Some pages still do not expose reliable update dates.
 - No database in v1 (local history only).

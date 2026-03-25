@@ -7,13 +7,28 @@ const model = "gemini-2.5-flash-lite";
 
 const pathHints = ["", "/pricing", "/product", "/products", "/docs", "/blog", "/news", "/press", "/investor-relations", "/updates", "/announcements"];
 
+const COMPANY_ALIASES: Record<string, { canonical: string; ticker?: string; domains?: string[] }> = {
+  nvidia: { canonical: "NVIDIA", ticker: "NVDA", domains: ["nvidia.com", "investor.nvidia.com"] },
+  nvda: { canonical: "NVIDIA", ticker: "NVDA", domains: ["nvidia.com", "investor.nvidia.com"] },
+  walmart: { canonical: "Walmart", ticker: "WMT", domains: ["walmart.com", "corporate.walmart.com"] },
+  costco: { canonical: "Costco", ticker: "COST", domains: ["costco.com", "investor.costco.com"] },
+  target: { canonical: "Target", ticker: "TGT", domains: ["target.com", "corporate.target.com"] },
+  amazon: { canonical: "Amazon", ticker: "AMZN", domains: ["amazon.com", "ir.aboutamazon.com"] },
+  microsoft: { canonical: "Microsoft", ticker: "MSFT", domains: ["microsoft.com", "news.microsoft.com", "investor.microsoft.com"] },
+  google: { canonical: "Alphabet", ticker: "GOOGL", domains: ["about.google", "abc.xyz"] },
+  alphabet: { canonical: "Alphabet", ticker: "GOOGL", domains: ["abc.xyz", "about.google"] },
+  meta: { canonical: "Meta", ticker: "META", domains: ["about.meta.com", "investor.atmeta.com"] },
+};
+
 type ProbeTarget = {
   url: string;
   type: SourceItem["type"];
   title?: string;
+  snippet?: string;
   detectedDate?: string;
   class: "official" | "news" | "analyst" | "filing" | "forums-blogs" | "general";
   weight: number;
+  query?: string;
 };
 
 const defaultGovernance: SourceGovernance = {
@@ -42,6 +57,17 @@ function normalizeUrl(raw: string) {
   return `https://${value}`;
 }
 
+function canonicalizeUrl(raw: string) {
+  try {
+    const u = new URL(normalizeUrl(raw));
+    u.hash = "";
+    ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "ocid", "cmpid", "ref"].forEach((k) => u.searchParams.delete(k));
+    return u.toString();
+  } catch {
+    return normalizeUrl(raw);
+  }
+}
+
 function baseOrigin(url: string) {
   try {
     const u = new URL(normalizeUrl(url));
@@ -52,16 +78,17 @@ function baseOrigin(url: string) {
 }
 
 function inferDomainsFromName(name: string) {
-  const token = name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .join("");
-
+  const token = name.toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim().split(/\s+/).slice(0, 2).join("");
   if (!token) return [];
   return [`https://www.${token}.com`, `https://${token}.com`, `https://corporate.${token}.com`];
+}
+
+function titleCase(value: string) {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1).toLowerCase() : value;
+}
+
+function cleanToken(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function levenshtein(a: string, b: string) {
@@ -75,14 +102,6 @@ function levenshtein(a: string, b: string) {
     }
   }
   return dp[a.length][b.length];
-}
-
-function cleanToken(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-function titleCase(value: string) {
-  return value ? value.charAt(0).toUpperCase() + value.slice(1).toLowerCase() : value;
 }
 
 function guessCompanyFromUrl(url: string) {
@@ -109,15 +128,29 @@ function bestTypoCorrection(inputName: string, candidates: string[]) {
       if (!best || dist < best.dist) best = { value: c, dist };
     }
   }
-  if (!best) return undefined;
-  if (cleanToken(best.value) === cleanInput) return undefined;
+  if (!best || cleanToken(best.value) === cleanInput) return undefined;
   return best.value;
+}
+
+function normalizeCompanyAlias(name: string) {
+  const key = cleanToken(name);
+  return COMPANY_ALIASES[key]?.canonical;
+}
+
+function lookupTicker(name: string) {
+  const key = cleanToken(name);
+  return COMPANY_ALIASES[key]?.ticker;
+}
+
+function knownDomains(name: string) {
+  const key = cleanToken(name);
+  return (COMPANY_ALIASES[key]?.domains || []).map((d) => `https://${d}`);
 }
 
 function classifyUrl(url: string): ProbeTarget["class"] {
   const u = url.toLowerCase();
-  if (u.includes("sec.gov") || u.includes("investor") || u.includes("annual-report") || u.includes("10-k") || u.includes("10q")) return "filing";
-  if (u.includes("reuters.com") || u.includes("bloomberg.com") || u.includes("ft.com") || u.includes("wsj.com") || u.includes("news") || u.includes("press")) return "news";
+  if (u.includes("sec.gov") || u.includes("investor") || u.includes("annual-report") || u.includes("10-k") || u.includes("10q") || u.includes("8-k")) return "filing";
+  if (u.includes("reuters.com") || u.includes("bloomberg.com") || u.includes("ft.com") || u.includes("wsj.com") || u.includes("apnews") || u.includes("cnbc") || u.includes("news")) return "news";
   if (u.includes("gartner") || u.includes("forrester") || u.includes("idc.com") || u.includes("cbinsights") || u.includes("pitchbook")) return "analyst";
   if (u.includes("reddit.com") || u.includes("medium.com") || u.includes("substack") || u.includes("blog") || u.includes("forum")) return "forums-blogs";
   if (u.includes(".com") || u.includes(".io") || u.includes(".co")) return "official";
@@ -151,6 +184,10 @@ function isAllowedByGovernance(sourceClass: ProbeTarget["class"], type: SourceIt
 }
 
 function extractDate(text: string): string | undefined {
+  const meta = text.match(/(article:published_time|article:modified_time|og:updated_time|publish-date|datePublished|dateModified)["'\s:=]+([0-9T:\-+Z\.]{8,})/i);
+  if (meta?.[2]) return meta[2];
+  const timeTag = text.match(/<time[^>]*datetime=["']([^"']+)["']/i);
+  if (timeTag?.[1]) return timeTag[1];
   const iso = text.match(/\b(20\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b/);
   if (iso) return iso[0];
   const month = text.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+20\d{2}\b/i);
@@ -165,7 +202,7 @@ function safeTextFromHtml(html: string) {
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 5500);
+    .slice(0, 7000);
 }
 
 async function fetchWithTimeout(url: string, timeoutMs = 8000) {
@@ -173,7 +210,7 @@ async function fetchWithTimeout(url: string, timeoutMs = 8000) {
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 GTMBriefingAgent/2.0" },
+      headers: { "User-Agent": "Mozilla/5.0 GTMBriefingAgent/3.0" },
       signal: controller.signal,
     });
   } finally {
@@ -181,71 +218,125 @@ async function fetchWithTimeout(url: string, timeoutMs = 8000) {
   }
 }
 
-async function searchRss(rssUrl: string) {
+function parseRssItems(xml: string) {
+  const items = [...xml.matchAll(/<item>[\s\S]*?<\/item>/g)].map((m) => m[0]);
+  return items.map((item) => {
+    const link = item.match(/<link>(https?:\/\/[^<]+)<\/link>/)?.[1];
+    const title = item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/)?.[1] || item.match(/<title>(.*?)<\/title>/)?.[1];
+    const pubDate = item.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || item.match(/<updated>(.*?)<\/updated>/)?.[1];
+    const description = item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>|<description>(.*?)<\/description>/)?.[1] || item.match(/<description>(.*?)<\/description>/)?.[1];
+    const sourceUrl = item.match(/<source[^>]*url=["']([^"']+)["']/)?.[1];
+    const chosenLink = sourceUrl || link;
+    if (!chosenLink) return null;
+    return {
+      url: canonicalizeUrl(chosenLink),
+      title: title?.trim(),
+      snippet: description?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+      detectedDate: pubDate,
+    };
+  }).filter(Boolean) as { url: string; title?: string; snippet?: string; detectedDate?: string }[];
+}
+
+async function searchRss(rssUrl: string, query?: string) {
   try {
     const res = await fetchWithTimeout(rssUrl, 7000);
     if (!res.ok) return [] as ProbeTarget[];
     const xml = await res.text();
-    const items = [...xml.matchAll(/<item>[\s\S]*?<\/item>/g)].map((m) => m[0]);
-    return items
-      .map((item) => {
-        const link = item.match(/<link>(https?:\/\/[^<]+)<\/link>/)?.[1];
-        const title = item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/)?.[1] || item.match(/<title>(.*?)<\/title>/)?.[1];
-        const pubDate = item.match(/<pubDate>(.*?)<\/pubDate>/)?.[1];
-        if (!link) return null;
-        return {
-          url: link,
-          type: "public-page" as const,
-          title: title?.trim(),
-          detectedDate: pubDate,
-          class: classifyUrl(link),
-          weight: 0.5,
-        };
-      })
-      .filter(Boolean) as ProbeTarget[];
+    return parseRssItems(xml).map((item) => ({
+      url: item.url,
+      type: "public-page" as const,
+      title: item.title,
+      snippet: item.snippet,
+      detectedDate: item.detectedDate,
+      class: classifyUrl(item.url),
+      weight: 0.5,
+      query,
+    }));
   } catch {
     return [] as ProbeTarget[];
   }
 }
 
+function relevanceScore(target: ProbeTarget, company: string, competitors: string[]) {
+  const hay = `${target.title || ""} ${target.snippet || ""} ${target.url}`.toLowerCase();
+  let score = 0;
+  const keywords = [company, ...competitors, "earnings", "guidance", "launch", "pricing", "partnership", "revenue", "forecast", "announcement"].filter(Boolean);
+  for (const k of keywords) {
+    if (k && hay.includes(k.toLowerCase())) score += 0.08;
+  }
+  return Math.min(0.5, score);
+}
+
+function recencyScore(date?: string) {
+  if (!date) return 0;
+  const t = new Date(date).getTime();
+  if (!Number.isFinite(t)) return 0;
+  const days = (Date.now() - t) / (1000 * 60 * 60 * 24);
+  if (days <= 7) return 0.5;
+  if (days <= 30) return 0.35;
+  if (days <= 90) return 0.2;
+  if (days <= 180) return 0.1;
+  return 0;
+}
+
 async function webSearchTargets(input: BriefInput) {
   const company = input.primaryCompany.trim();
   const competitors = input.competitors.join(" OR ");
+  const ticker = lookupTicker(company) || cleanToken(company).toUpperCase();
 
   const queries = [
     `${company} latest news`,
+    `${company} earnings guidance`,
+    `${company} product announcement`,
     `${company} pricing update`,
-    `${company} product launch`,
     `${company} investor relations press release`,
-    competitors ? `(${company}) (${competitors}) competitive analysis latest` : `${company} competitors latest`,
+    competitors ? `${company} vs (${competitors}) competitive update` : `${company} competitors update`,
   ];
 
   const providers = queries.flatMap((q) => [
-    `https://www.bing.com/search?q=${encodeURIComponent(q)}&format=rss`,
     `https://www.bing.com/news/search?q=${encodeURIComponent(q)}&format=rss`,
+    `https://www.bing.com/search?q=${encodeURIComponent(q)}&format=rss`,
     `https://news.google.com/rss/search?q=${encodeURIComponent(q)}`,
   ]);
 
-  const results = await Promise.all(providers.map(searchRss));
-  return results.flat().slice(0, 40);
+  const yahoo = [
+    `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${encodeURIComponent(ticker)}&region=US&lang=en-US`,
+  ];
+
+  const resultSets = await Promise.all([...providers.map((p, i) => searchRss(p, queries[Math.floor(i / 3)])), ...yahoo.map((p) => searchRss(p, `${company} finance`))]);
+  const flat = resultSets.flat();
+
+  const dedup = new Map<string, ProbeTarget>();
+  for (const t of flat) {
+    const key = canonicalizeUrl(t.url);
+    if (!dedup.has(key)) dedup.set(key, { ...t, url: key });
+  }
+
+  const ranked = [...dedup.values()].map((t) => {
+    const rel = relevanceScore(t, company, input.competitors);
+    const rec = recencyScore(t.detectedDate);
+    return { ...t, weight: t.weight + rel + rec };
+  });
+
+  return ranked.sort((a, b) => b.weight - a.weight).slice(0, 80);
 }
 
 async function normalizeInputTypos(input: BriefInput) {
   const candidateSet = new Set<string>();
-
   const namesToCheck = [input.primaryCompany, ...input.competitors].filter(Boolean);
+
   for (const name of namesToCheck) {
+    const alias = normalizeCompanyAlias(name);
+    if (alias) candidateSet.add(alias);
+
     const queryFeeds = [
       `https://www.bing.com/search?q=${encodeURIComponent(`${name} company`)}&format=rss`,
       `https://news.google.com/rss/search?q=${encodeURIComponent(`${name} company`)}`,
     ];
-    const searchResults = (await Promise.all(queryFeeds.map(searchRss))).flat();
+    const searchResults = (await Promise.all(queryFeeds.map((u) => searchRss(u)))).flat();
     searchResults.forEach((r) => {
       if (r.title) {
-        r.title
-          .split(/[^A-Za-z0-9]+/)
-          .filter((x) => x.length >= 4)
-          .forEach((x) => candidateSet.add(titleCase(x)));
+        r.title.split(/[^A-Za-z0-9]+/).filter((x) => x.length >= 4).forEach((x) => candidateSet.add(titleCase(x)));
       }
       const fromUrl = guessCompanyFromUrl(r.url);
       if (fromUrl) candidateSet.add(fromUrl);
@@ -253,8 +344,8 @@ async function normalizeInputTypos(input: BriefInput) {
   }
 
   const candidates = Array.from(candidateSet);
-  const primaryCorrection = bestTypoCorrection(input.primaryCompany, candidates);
-  const competitorCorrections = input.competitors.map((c) => bestTypoCorrection(c, candidates) || c);
+  const primaryCorrection = normalizeCompanyAlias(input.primaryCompany) || bestTypoCorrection(input.primaryCompany, candidates);
+  const competitorCorrections = input.competitors.map((c) => normalizeCompanyAlias(c) || bestTypoCorrection(c, candidates) || c);
 
   return {
     normalizedInput: {
@@ -263,24 +354,41 @@ async function normalizeInputTypos(input: BriefInput) {
       competitors: competitorCorrections,
     },
     corrections: [
-      ...(primaryCorrection ? [`Interpreted company '${input.primaryCompany}' as '${primaryCorrection}'.`] : []),
-      ...input.competitors
-        .map((c, i) => (competitorCorrections[i] !== c ? `Interpreted competitor '${c}' as '${competitorCorrections[i]}'.` : null))
-        .filter(Boolean) as string[],
+      ...(primaryCorrection && primaryCorrection !== input.primaryCompany ? [`Interpreted company '${input.primaryCompany}' as '${primaryCorrection}'.`] : []),
+      ...input.competitors.map((c, i) => (competitorCorrections[i] !== c ? `Interpreted competitor '${c}' as '${competitorCorrections[i]}'.` : null)).filter(Boolean) as string[],
     ],
   };
 }
 
 async function fetchEvidence(target: ProbeTarget) {
   try {
-    const res = await fetchWithTimeout(target.url);
-    if (!res.ok) return null;
+    const res = await fetchWithTimeout(target.url, 7000);
+    if (!res.ok) {
+      if (target.title || target.snippet) {
+        return {
+          source: {
+            title: target.title || `News signal: ${new URL(target.url).hostname}`,
+            url: target.url,
+            type: target.type,
+            tier: tierFromClass(target.class),
+            fetchedAt: new Date().toISOString(),
+            detectedDate: target.detectedDate,
+            note: `metadata-only; class=${target.class}; weight=${target.weight.toFixed(2)}`,
+          } as SourceItem,
+          text: `${target.title || ""}. ${target.snippet || ""}`.trim(),
+        };
+      }
+      return null;
+    }
+
     const html = await res.text();
     const text = safeTextFromHtml(html);
-    const detectedDate = extractDate(`${html}\n${text}`) || target.detectedDate;
+    const detectedDate = extractDate(html) || extractDate(text) || target.detectedDate;
+    const titleFromHtml = html.match(/<title>(.*?)<\/title>/i)?.[1]?.replace(/\s+/g, " ")?.trim();
+
     return {
       source: {
-        title: target.title || `Public page: ${new URL(target.url).hostname}`,
+        title: target.title || titleFromHtml || `Public page: ${new URL(target.url).hostname}`,
         url: target.url,
         type: target.type,
         tier: tierFromClass(target.class),
@@ -288,9 +396,23 @@ async function fetchEvidence(target: ProbeTarget) {
         detectedDate,
         note: `class=${target.class}; weight=${target.weight.toFixed(2)}`,
       } as SourceItem,
-      text,
+      text: `${target.title || ""}. ${target.snippet || ""}. ${text}`.trim().slice(0, 9000),
     };
   } catch {
+    if (target.title || target.snippet) {
+      return {
+        source: {
+          title: target.title || `News signal: ${new URL(target.url).hostname}`,
+          url: target.url,
+          type: target.type,
+          tier: tierFromClass(target.class),
+          fetchedAt: new Date().toISOString(),
+          detectedDate: target.detectedDate,
+          note: `metadata-only-fallback; class=${target.class}; weight=${target.weight.toFixed(2)}`,
+        } as SourceItem,
+        text: `${target.title || ""}. ${target.snippet || ""}`.trim(),
+      };
+    }
     return null;
   }
 }
@@ -303,8 +425,11 @@ function parseDateToEpoch(value?: string): number | undefined {
 
 function freshnessFromSources(sources: SourceItem[]) {
   const now = Date.now();
-  const epochs = sources.map((s) => parseDateToEpoch(s.detectedDate)).filter((v): v is number => Boolean(v));
-  if (epochs.length === 0) {
+  const dated = sources
+    .map((s) => ({ source: s, epoch: parseDateToEpoch(s.detectedDate) }))
+    .filter((x): x is { source: SourceItem; epoch: number } => Boolean(x.epoch));
+
+  if (dated.length === 0) {
     return {
       freshestEvidenceDate: undefined,
       daysSinceFreshest: undefined,
@@ -312,8 +437,10 @@ function freshnessFromSources(sources: SourceItem[]) {
       summary: "No explicit dated evidence detected across fetched sources. Recency-sensitive claims are constrained.",
     };
   }
-  const freshest = Math.max(...epochs);
+
+  const freshest = Math.max(...dated.map((d) => d.epoch));
   const days = Math.floor((now - freshest) / (1000 * 60 * 60 * 24));
+
   if (days <= 90) {
     return { freshestEvidenceDate: new Date(freshest).toISOString(), daysSinceFreshest: days, status: "current" as const, summary: `Freshest dated evidence is ${days} days old.` };
   }
@@ -321,40 +448,6 @@ function freshnessFromSources(sources: SourceItem[]) {
     return { freshestEvidenceDate: new Date(freshest).toISOString(), daysSinceFreshest: days, status: "mixed" as const, summary: `Freshest dated evidence is ${days} days old; recency confidence is moderate.` };
   }
   return { freshestEvidenceDate: new Date(freshest).toISOString(), daysSinceFreshest: days, status: "stale" as const, summary: `Freshest dated evidence is ${days} days old; avoid confident recent-change claims.` };
-}
-
-async function buildProbeUrls(input: BriefInput, governance: SourceGovernance) {
-  const urls: ProbeTarget[] = [];
-  const pushUnique = (target: ProbeTarget) => {
-    const normalized = normalizeUrl(target.url);
-    if (!normalized) return;
-    if (!isAllowedByGovernance(target.class, target.type, governance)) return;
-    const weight = classWeight(target.class, governance);
-    if (weight <= 0) return;
-    if (urls.find((u) => u.url === normalized)) return;
-    urls.push({ ...target, url: normalized, weight });
-  };
-
-  (input.trustedUrls || []).slice(0, 12).forEach((url) => pushUnique({ url, type: "user-provided", title: "Trusted URL", class: classifyUrl(url), weight: governance.weights.official }));
-
-  const companyOrigins = [input.companyWebsite, ...inferDomainsFromName(input.primaryCompany)]
-    .filter(Boolean)
-    .map((u) => baseOrigin(u as string))
-    .filter(Boolean);
-  companyOrigins.forEach((origin) => pathHints.forEach((p) => pushUnique({ url: `${origin}${p}`, type: "company-site", class: "official", weight: governance.weights.official })));
-
-  const competitorSites = [...(input.competitorWebsites || []), ...input.competitors.flatMap(inferDomainsFromName)];
-  competitorSites.slice(0, 10).forEach((site) => {
-    const origin = baseOrigin(site);
-    if (origin) pathHints.forEach((p) => pushUnique({ url: `${origin}${p}`, type: "competitor-site", class: "official", weight: governance.weights.official }));
-  });
-
-  const searchTargets = await webSearchTargets(input);
-  searchTargets.forEach((t) => pushUnique(t));
-
-  return urls
-    .sort((a, b) => b.weight - a.weight)
-    .slice(0, Math.max(10, Math.min(80, governance.maxSearchResults)));
 }
 
 function summarizeSourceTiers(sources: SourceItem[]) {
@@ -374,9 +467,9 @@ function toBand(score: number): "Low" | "Medium" | "High" {
 function confidenceBreakdownFromEvidence(sources: SourceItem[], freshness: { status: "current" | "mixed" | "stale" }) {
   const tier = summarizeSourceTiers(sources);
   const total = Math.max(1, sources.length);
-  const coverageScore = Math.min(1, total / 16);
+  const coverageScore = Math.min(1, total / 20);
   const recencyScore = freshness.status === "current" ? 1 : freshness.status === "mixed" ? 0.55 : 0.2;
-  const qualityScore = Math.min(1, (tier.tier1 * 1 + tier.tier2 * 0.6 + tier.tier3 * 0.25) / Math.max(1, total));
+  const qualityScore = Math.min(1, (tier.tier1 * 1 + tier.tier2 * 0.7 + tier.tier3 * 0.25) / Math.max(1, total));
 
   return {
     sourceTierSummary: tier,
@@ -386,6 +479,55 @@ function confidenceBreakdownFromEvidence(sources: SourceItem[], freshness: { sta
       sourceQuality: toBand(qualityScore),
     },
   };
+}
+
+function buildFallbackSignalsFromSources(sources: SourceItem[]) {
+  const ranked = [...sources]
+    .filter((s) => s.detectedDate)
+    .sort((a, b) => (parseDateToEpoch(b.detectedDate) || 0) - (parseDateToEpoch(a.detectedDate) || 0))
+    .slice(0, 6);
+
+  return ranked.map((s) => ({
+    claim: `${s.title} is a recent verified public signal from ${new URL(s.url).hostname}.`,
+    sourceId: s.sourceId,
+    sourceUrl: s.url,
+    observedDate: s.detectedDate || "date not confirmed",
+    dateConfidence: s.detectedDate ? "medium" as const : "low" as const,
+  }));
+}
+
+async function buildProbeUrls(input: BriefInput, governance: SourceGovernance) {
+  const urls: ProbeTarget[] = [];
+  const seen = new Set<string>();
+  const pushUnique = (target: ProbeTarget) => {
+    const normalized = canonicalizeUrl(target.url);
+    if (!normalized) return;
+    if (!isAllowedByGovernance(target.class, target.type, governance)) return;
+    const weight = classWeight(target.class, governance);
+    if (weight <= 0) return;
+    if (seen.has(normalized)) return;
+    seen.add(normalized);
+    urls.push({ ...target, url: normalized, weight: target.weight + weight });
+  };
+
+  (input.trustedUrls || []).slice(0, 12).forEach((url) => pushUnique({ url, type: "user-provided", title: "Trusted URL", class: classifyUrl(url), weight: governance.weights.official }));
+
+  const companyOrigins = [input.companyWebsite, ...knownDomains(input.primaryCompany), ...inferDomainsFromName(input.primaryCompany)]
+    .filter(Boolean)
+    .map((u) => baseOrigin(u as string))
+    .filter(Boolean);
+  companyOrigins.forEach((origin) => pathHints.forEach((p) => pushUnique({ url: `${origin}${p}`, type: "company-site", class: "official", weight: governance.weights.official + 0.2 })));
+
+  const competitorSites = [...(input.competitorWebsites || []), ...input.competitors.flatMap(knownDomains), ...input.competitors.flatMap(inferDomainsFromName)];
+  competitorSites.slice(0, 16).forEach((site) => {
+    const origin = baseOrigin(site);
+    if (origin) pathHints.forEach((p) => pushUnique({ url: `${origin}${p}`, type: "competitor-site", class: "official", weight: governance.weights.official }));
+  });
+
+  const searchTargets = await webSearchTargets(input);
+  searchTargets.forEach((t) => pushUnique(t));
+
+  return urls.sort((a, b) => b.weight - a.weight).slice(0, Math.max(20, Math.min(120, governance.maxSearchResults + 20)));
 }
 
 function makeErrorBrief(input: BriefInput, reason: string): GTMBrief {
@@ -412,27 +554,15 @@ function makeErrorBrief(input: BriefInput, reason: string): GTMBrief {
       strategy: ["Retry with trusted press/news pages."],
       leadership: ["Treat this run as incomplete."],
     },
-    freshness: {
-      status: "stale",
-      summary: "No usable evidence due to pipeline failure.",
-    },
-    confidenceCoverage: {
-      confidence: "Low",
-      evidenceQuality: "Generation failure; no reliable synthesis produced.",
-      knownGaps: [reason],
-    },
-    confidenceBreakdown: {
-      coverage: "Low",
-      recency: "Low",
-      sourceQuality: "Low",
-    },
+    freshness: { status: "stale", summary: "No usable evidence due to pipeline failure." },
+    confidenceCoverage: { confidence: "Low", evidenceQuality: "Generation failure; no reliable synthesis produced.", knownGaps: [reason] },
+    confidenceBreakdown: { coverage: "Low", recency: "Low", sourceQuality: "Low" },
     sourceTierSummary: { tier1: 0, tier2: 0, tier3: 0 },
-    companyProfile: {
-      canonicalName: input.primaryCompany || "Unknown company",
-    },
+    companyProfile: { canonicalName: input.primaryCompany || "Unknown company" },
     sources: [],
     observedVsInferred: { observed: [], inferred: [] },
     generationNotes: [reason],
+    systemRun: [{ step: "Synthesis", status: "failed", detail: reason }],
   };
 }
 
@@ -456,24 +586,22 @@ export async function POST(req: Request) {
   systemRun.push({ step: "Source discovery", status: "done", detail: `Planned ${probePlan.length} candidate sources.` });
 
   const fetchedRaw = (await Promise.all(probePlan.map((t) => fetchEvidence(t)))).filter(Boolean) as { source: SourceItem; text: string }[];
-  const sources = fetchedRaw.map((f, i) => ({ ...f.source, sourceId: `S${i + 1}` }));
-  const fetched = fetchedRaw.map((f, i) => ({ ...f, source: { ...f.source, sourceId: `S${i + 1}` } }));
-  const freshness = freshnessFromSources(sources);
+  const dedupByUrl = new Map<string, { source: SourceItem; text: string }>();
+  for (const item of fetchedRaw) {
+    const key = canonicalizeUrl(item.source.url);
+    if (!dedupByUrl.has(key)) dedupByUrl.set(key, item);
+  }
+  const fetched = [...dedupByUrl.values()].map((f, i) => ({ ...f, source: { ...f.source, sourceId: `S${i + 1}` } }));
+  const sources = fetched.map((f) => f.source);
 
+  const freshness = freshnessFromSources(sources);
   const notices: string[] = [...corrections];
+
   if (sources.length === 0) notices.push("No evidence pages were reachable from public search and provided inputs. Add official company/competitor URLs.");
   if (freshness.status !== "current") notices.push(`Freshness status is ${freshness.status}. ${freshness.summary}`);
 
-  systemRun.push({
-    step: "Evidence collection",
-    status: sources.length > 0 ? "done" : "warning",
-    detail: `${sources.length} sources fetched successfully.`,
-  });
-  systemRun.push({
-    step: "Freshness audit",
-    status: freshness.status === "current" ? "done" : "warning",
-    detail: freshness.summary,
-  });
+  systemRun.push({ step: "Evidence collection", status: sources.length > 0 ? "done" : "warning", detail: `${sources.length} sources fetched successfully.` });
+  systemRun.push({ step: "Freshness audit", status: freshness.status === "current" ? "done" : "warning", detail: freshness.summary });
 
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -493,7 +621,13 @@ SourceCount: ${sources.length}`;
     systemRun.push({ step: "Planning", status: "warning", detail: "Planner stage failed; proceeded with synthesis." });
   }
 
-  const evidencePayload = fetched.map((f) => ({ source: f.source, excerpt: f.text.slice(0, 1800) }));
+  const recentSignals = sources
+    .filter((s) => s.detectedDate)
+    .sort((a, b) => (parseDateToEpoch(b.detectedDate) || 0) - (parseDateToEpoch(a.detectedDate) || 0))
+    .slice(0, 12)
+    .map((s) => ({ sourceId: s.sourceId, title: s.title, url: s.url, date: s.detectedDate, tier: s.tier }));
+
+  const evidencePayload = fetched.map((f) => ({ source: f.source, excerpt: f.text.slice(0, 2200) }));
 
   const synthesisPrompt = `Create strict JSON only with schema:
 {
@@ -512,18 +646,19 @@ SourceCount: ${sources.length}`;
 "companyProfile": {"canonicalName": string, "ticker": string, "sector": string, "region": string}
 }
 Rules:
-- Never fabricate dated events.
-- For recency-sensitive claims, include observedDate or "date not confirmed".
+- Never fabricate events.
+- LatestVerifiedSignals must prioritize recent, dated, trustworthy signals from provided evidence.
+- Executive summary must reflect current public narrative when recent evidence exists.
+- WhatChanged, ProductPricingSignals, Risks, Opportunities, and RecommendedActions must be informed by recent signals when available.
 - Use valid sourceId values from provided evidence where possible (e.g., S1, S2).
-- If evidence is stale/mixed, be explicit.
-- Keep analyst-grade tone and concise business language.
+- If date is unknown, use "date not confirmed".
 Context:
 Input=${JSON.stringify(input)}
 Planner=${plannerText}
 Freshness=${JSON.stringify(freshness)}
-Governance=${JSON.stringify(governance)}
+RecentSignals=${JSON.stringify(recentSignals)}
 SourceIds=${sources.map((s) => s.sourceId).join(",")}
-Evidence=${JSON.stringify(evidencePayload).slice(0, 26000)}
+Evidence=${JSON.stringify(evidencePayload).slice(0, 32000)}
 `;
 
   try {
@@ -534,10 +669,9 @@ Evidence=${JSON.stringify(evidencePayload).slice(0, 26000)}
     });
 
     const parsed = JSON.parse(result.text || "{}");
-    const nonEmptyEvidence = (
-      value: unknown,
-      fallback: { claim: string; observedDate: string; dateConfidence: "low"; sourceUrl?: string }[],
-    ) => (Array.isArray(value) && value.length > 0 ? value : fallback);
+    const fallbackSignals = buildFallbackSignalsFromSources(sources);
+    const nonEmptyEvidence = (value: unknown, fallback: { claim: string; observedDate: string; dateConfidence: "low" | "medium"; sourceUrl?: string; sourceId?: string }[]) =>
+      (Array.isArray(value) && value.length > 0 ? value : fallback);
 
     const { sourceTierSummary, confidenceBreakdown } = confidenceBreakdownFromEvidence(sources, freshness);
 
@@ -550,16 +684,10 @@ Evidence=${JSON.stringify(evidencePayload).slice(0, 26000)}
       competitors: input.competitors || [],
       objective: input.objective,
       audience: input.audience,
-      executiveSummary: parsed.executiveSummary || "Insufficient evidence for a confident summary.",
-      latestVerifiedSignals: nonEmptyEvidence(parsed.latestVerifiedSignals, [
-        { claim: "No strongly verifiable signal extracted from current evidence set.", observedDate: "date not confirmed", dateConfidence: "low" },
-      ]),
-      whatChanged: nonEmptyEvidence(parsed.whatChanged, [
-        { claim: "Insufficient dated evidence to assert recent changes.", observedDate: "date not confirmed", dateConfidence: "low" },
-      ]),
-      productPricingSignals: nonEmptyEvidence(parsed.productPricingSignals, [
-        { claim: "Insufficient evidence for verified pricing shifts.", observedDate: "date not confirmed", dateConfidence: "low" },
-      ]),
+      executiveSummary: parsed.executiveSummary || "Evidence gathered successfully; current verified signals are summarized below.",
+      latestVerifiedSignals: nonEmptyEvidence(parsed.latestVerifiedSignals, fallbackSignals.length > 0 ? fallbackSignals : [{ claim: "No strongly verifiable signal extracted from current evidence set.", observedDate: "date not confirmed", dateConfidence: "low" }]),
+      whatChanged: nonEmptyEvidence(parsed.whatChanged, fallbackSignals.slice(0, 4).map((s) => ({ ...s, claim: `Recent signal change: ${s.claim}` }))),
+      productPricingSignals: nonEmptyEvidence(parsed.productPricingSignals, [{ claim: "Insufficient evidence for verified product/pricing shifts.", observedDate: "date not confirmed", dateConfidence: "low" }]),
       likelyICP: parsed.likelyICP || [],
       messagingPositioning: parsed.messagingPositioning || [],
       risks: parsed.risks || [],
@@ -575,9 +703,7 @@ Evidence=${JSON.stringify(evidencePayload).slice(0, 26000)}
       },
       confidenceBreakdown,
       sourceTierSummary,
-      companyProfile: parsed.companyProfile || {
-        canonicalName: input.primaryCompany,
-      },
+      companyProfile: parsed.companyProfile || { canonicalName: input.primaryCompany, ticker: lookupTicker(input.primaryCompany) },
       sources,
       generationNotes: notices,
       systemRun: [...systemRun, { step: "Synthesis", status: "done", detail: "Generated analyst memo from weighted evidence." }],
