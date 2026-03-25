@@ -5,6 +5,25 @@ export type QuickMode =
   | "Executive Market Snapshot"
   | "Investor-style Competitive Memo";
 
+export interface SourceGovernance {
+  sourceClassFilters: {
+    officialCompany: boolean;
+    officialCompetitor: boolean;
+    news: boolean;
+    analystResearch: boolean;
+    regulatoryFilings: boolean;
+    forumsBlogs: boolean;
+  };
+  excludeForumsBlogs: boolean;
+  maxSearchResults: number;
+  weights: {
+    official: number;
+    news: number;
+    analyst: number;
+    filings: number;
+  };
+}
+
 export interface BriefInput {
   primaryCompany: string;
   competitors: string[];
@@ -15,6 +34,7 @@ export interface BriefInput {
   notes?: string;
   trustedUrls?: string[];
   quickMode?: QuickMode;
+  governance?: SourceGovernance;
 }
 
 export type SourceType = "user-provided" | "company-site" | "competitor-site" | "public-page";

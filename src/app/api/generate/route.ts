@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-import { BriefInput, GTMBrief, GenerateResponse, SourceItem } from "@/lib/types";
+import { BriefInput, GTMBrief, GenerateResponse, SourceGovernance, SourceItem } from "@/lib/types";
 
 export const runtime = "nodejs";
 const model = "gemini-2.5-flash-lite";
@@ -12,6 +12,27 @@ type ProbeTarget = {
   type: SourceItem["type"];
   title?: string;
   detectedDate?: string;
+  class: "official" | "news" | "analyst" | "filing" | "forums-blogs" | "general";
+  weight: number;
+};
+
+const defaultGovernance: SourceGovernance = {
+  sourceClassFilters: {
+    officialCompany: true,
+    officialCompetitor: true,
+    news: true,
+    analystResearch: true,
+    regulatoryFilings: true,
+    forumsBlogs: false,
+  },
+  excludeForumsBlogs: true,
+  maxSearchResults: 40,
+  weights: {
+    official: 1,
+    news: 0.9,
+    analyst: 0.75,
+    filings: 0.85,
+  },
 };
 
 function normalizeUrl(raw: string) {
@@ -41,6 +62,36 @@ function inferDomainsFromName(name: string) {
 
   if (!token) return [];
   return [`https://www.${token}.com`, `https://${token}.com`, `https://corporate.${token}.com`];
+}
+
+function classifyUrl(url: string): ProbeTarget["class"] {
+  const u = url.toLowerCase();
+  if (u.includes("sec.gov") || u.includes("investor") || u.includes("annual-report") || u.includes("10-k") || u.includes("10q")) return "filing";
+  if (u.includes("reuters.com") || u.includes("bloomberg.com") || u.includes("ft.com") || u.includes("wsj.com") || u.includes("news") || u.includes("press")) return "news";
+  if (u.includes("gartner") || u.includes("forrester") || u.includes("idc.com") || u.includes("cbinsights") || u.includes("pitchbook")) return "analyst";
+  if (u.includes("reddit.com") || u.includes("medium.com") || u.includes("substack") || u.includes("blog") || u.includes("forum")) return "forums-blogs";
+  if (u.includes(".com") || u.includes(".io") || u.includes(".co")) return "official";
+  return "general";
+}
+
+function classWeight(sourceClass: ProbeTarget["class"], governance: SourceGovernance) {
+  if (sourceClass === "official") return governance.weights.official;
+  if (sourceClass === "news") return governance.weights.news;
+  if (sourceClass === "analyst") return governance.weights.analyst;
+  if (sourceClass === "filing") return governance.weights.filings;
+  if (sourceClass === "forums-blogs") return governance.excludeForumsBlogs ? 0 : 0.35;
+  return 0.5;
+}
+
+function isAllowedByGovernance(sourceClass: ProbeTarget["class"], type: SourceItem["type"], governance: SourceGovernance) {
+  if (sourceClass === "forums-blogs" && governance.excludeForumsBlogs) return false;
+  if (type === "company-site" && !governance.sourceClassFilters.officialCompany) return false;
+  if (type === "competitor-site" && !governance.sourceClassFilters.officialCompetitor) return false;
+  if (sourceClass === "news" && !governance.sourceClassFilters.news) return false;
+  if (sourceClass === "analyst" && !governance.sourceClassFilters.analystResearch) return false;
+  if (sourceClass === "filing" && !governance.sourceClassFilters.regulatoryFilings) return false;
+  if (sourceClass === "forums-blogs" && !governance.sourceClassFilters.forumsBlogs) return false;
+  return true;
 }
 
 function extractDate(text: string): string | undefined {
@@ -91,6 +142,8 @@ async function searchRss(rssUrl: string) {
           type: "public-page" as const,
           title: title?.trim(),
           detectedDate: pubDate,
+          class: classifyUrl(link),
+          weight: 0.5,
         };
       })
       .filter(Boolean) as ProbeTarget[];
@@ -135,6 +188,7 @@ async function fetchEvidence(target: ProbeTarget) {
         type: target.type,
         fetchedAt: new Date().toISOString(),
         detectedDate,
+        note: `class=${target.class}; weight=${target.weight.toFixed(2)}`,
       } as SourceItem,
       text,
     };
@@ -171,33 +225,38 @@ function freshnessFromSources(sources: SourceItem[]) {
   return { freshestEvidenceDate: new Date(freshest).toISOString(), daysSinceFreshest: days, status: "stale" as const, summary: `Freshest dated evidence is ${days} days old; avoid confident recent-change claims.` };
 }
 
-async function buildProbeUrls(input: BriefInput) {
+async function buildProbeUrls(input: BriefInput, governance: SourceGovernance) {
   const urls: ProbeTarget[] = [];
   const pushUnique = (target: ProbeTarget) => {
     const normalized = normalizeUrl(target.url);
     if (!normalized) return;
+    if (!isAllowedByGovernance(target.class, target.type, governance)) return;
+    const weight = classWeight(target.class, governance);
+    if (weight <= 0) return;
     if (urls.find((u) => u.url === normalized)) return;
-    urls.push({ ...target, url: normalized });
+    urls.push({ ...target, url: normalized, weight });
   };
 
-  (input.trustedUrls || []).slice(0, 12).forEach((url) => pushUnique({ url, type: "user-provided", title: "Trusted URL" }));
+  (input.trustedUrls || []).slice(0, 12).forEach((url) => pushUnique({ url, type: "user-provided", title: "Trusted URL", class: classifyUrl(url), weight: governance.weights.official }));
 
   const companyOrigins = [input.companyWebsite, ...inferDomainsFromName(input.primaryCompany)]
     .filter(Boolean)
     .map((u) => baseOrigin(u as string))
     .filter(Boolean);
-  companyOrigins.forEach((origin) => pathHints.forEach((p) => pushUnique({ url: `${origin}${p}`, type: "company-site" })));
+  companyOrigins.forEach((origin) => pathHints.forEach((p) => pushUnique({ url: `${origin}${p}`, type: "company-site", class: "official", weight: governance.weights.official })));
 
   const competitorSites = [...(input.competitorWebsites || []), ...input.competitors.flatMap(inferDomainsFromName)];
   competitorSites.slice(0, 10).forEach((site) => {
     const origin = baseOrigin(site);
-    if (origin) pathHints.forEach((p) => pushUnique({ url: `${origin}${p}`, type: "competitor-site" }));
+    if (origin) pathHints.forEach((p) => pushUnique({ url: `${origin}${p}`, type: "competitor-site", class: "official", weight: governance.weights.official }));
   });
 
   const searchTargets = await webSearchTargets(input);
   searchTargets.forEach((t) => pushUnique(t));
 
-  return urls.slice(0, 60);
+  return urls
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, Math.max(10, Math.min(80, governance.maxSearchResults)));
 }
 
 function makeErrorBrief(input: BriefInput, reason: string): GTMBrief {
@@ -247,7 +306,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ brief: makeErrorBrief(input, reason), notices: [reason], generationError: reason } satisfies GenerateResponse);
   }
 
-  const probePlan = await buildProbeUrls(input);
+  const governance = { ...defaultGovernance, ...(input.governance || {}) };
+  governance.sourceClassFilters = { ...defaultGovernance.sourceClassFilters, ...(input.governance?.sourceClassFilters || {}) };
+  governance.weights = { ...defaultGovernance.weights, ...(input.governance?.weights || {}) };
+
+  const probePlan = await buildProbeUrls(input, governance);
   const fetched = (await Promise.all(probePlan.map((t) => fetchEvidence(t)))).filter(Boolean) as { source: SourceItem; text: string }[];
   const sources = fetched.map((f) => f.source);
   const freshness = freshnessFromSources(sources);
@@ -255,12 +318,14 @@ export async function POST(req: Request) {
   const notices: string[] = [];
   if (sources.length === 0) notices.push("No evidence pages were reachable from public search and provided inputs. Add official company/competitor URLs.");
   if (freshness.status !== "current") notices.push(`Freshness status is ${freshness.status}. ${freshness.summary}`);
+  notices.push(`Governance active: maxResults=${governance.maxSearchResults}, excludeForumsBlogs=${governance.excludeForumsBlogs}.`);
 
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
   const plannerPrompt = `Return JSON only with keys priorities (string[]), keyRisks (string[]), missingEvidence (string[]).
 Input: ${JSON.stringify(input)}
 Freshness: ${JSON.stringify(freshness)}
+Governance: ${JSON.stringify(governance)}
 SourceCount: ${sources.length}`;
 
   let plannerText = "{}";
@@ -297,6 +362,7 @@ Context:
 Input=${JSON.stringify(input)}
 Planner=${plannerText}
 Freshness=${JSON.stringify(freshness)}
+Governance=${JSON.stringify(governance)}
 Evidence=${JSON.stringify(evidencePayload).slice(0, 26000)}
 `;
 

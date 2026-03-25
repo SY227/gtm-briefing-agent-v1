@@ -5,6 +5,7 @@ A Vercel-ready, single-page competitive intelligence memo generator for founders
 ## Product direction
 - One primary route: `/`
 - Compact intake form + expandable advanced inputs
+- Source governance panel (class filters, forum/blog exclusion, weighting sliders)
 - Explicit generation states
 - Executive-style memo output (not dashboard cards)
 - Date-sensitive evidence handling with freshness audit
